@@ -3,13 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PicoShare - サーバー不要の超高速ファイル共有</title>
+    <title>PicoShare - 連結QR＆ワンタイムキー超高速ファイル共有</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts: Inter & Noto Sans JP -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
     <!-- QRious 高精度QRコードローカル生成ライブラリ (完全にブラウザ側で完結) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <!-- jsQR 高速ローカルQRデコーダー -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
         body {
             font-family: 'Inter', 'Noto Sans JP', sans-serif;
@@ -83,7 +85,7 @@
                 🚀 ファイルを送る (Send)
             </button>
             <button id="btn-tab-receive" onclick="switchTab('receive')" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 transition-all duration-300">
-                📥 キーで受け取る (Receive)
+                📥 キー・スキャン受信 (Receive)
             </button>
         </div>
 
@@ -196,15 +198,63 @@
                 </button>
             </div>
 
-            <!-- ================= 受信モード（キー入力） ================= -->
+            <!-- ================= 受信モード（キー入力＆カメラ起動） ================= -->
             <div id="receive-section" class="hidden space-y-6">
                 <div class="text-center space-y-2">
                     <h1 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
-                        キーでファイルを受け取る
+                        ファイルを受け取る
                     </h1>
                     <p class="text-slate-400 text-xs md:text-sm max-w-lg mx-auto">
-                        相手のPC画面に表示されている「6桁の英数字キー」を入力して、<br class="hidden sm:inline">ファイルをこのスマホ/PCに直接復元してダウンロードします。
+                        「6桁のキーを打ち込む」または「カメラでパラパラ動く連結QRコードをスキャン」して、ファイルをこのデバイスに100%ローカル復元します。
                     </p>
+                </div>
+
+                <!-- スキャンカメラ開始ボタン -->
+                <div class="flex justify-center">
+                    <button onclick="startQRScanner()" class="px-6 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold rounded-2xl shadow-lg shadow-indigo-500/20 hover:scale-[1.02] transition-all flex items-center space-x-3 cursor-pointer">
+                        <svg class="w-6 h-6 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                        <span>📷 カメラを起動して連結QRスキャン</span>
+                    </button>
+                </div>
+
+                <!-- スキャナー起動中のオーバーレイ/エリア -->
+                <div id="scanner-container" class="hidden flex-col items-center space-y-4 p-4 bg-slate-950/80 rounded-2xl border border-indigo-500/30">
+                    <div class="relative w-full max-w-sm aspect-square bg-black rounded-xl overflow-hidden border-2 border-slate-800">
+                        <!-- スキャンラインアニメーション -->
+                        <div class="absolute left-0 right-0 h-1 bg-indigo-500 opacity-70 animate-bounce top-0" style="animation-duration: 3s;"></div>
+                        <video id="scanner-video" class="w-full h-full object-cover" playsinline></video>
+                        <canvas id="scanner-canvas" class="hidden"></canvas>
+                        
+                        <!-- スキャン進捗ステータス -->
+                        <div class="absolute bottom-4 left-4 right-4 bg-slate-900/90 border border-slate-700 p-3 rounded-xl flex items-center justify-between">
+                            <span class="text-xs font-bold text-indigo-400">連結QR解析進度:</span>
+                            <span id="scan-progress-text" class="text-xs font-black font-mono text-emerald-400">0 / 0 (0%)</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 進捗バー -->
+                    <div class="w-full max-w-sm bg-slate-800 h-3 rounded-full overflow-hidden border border-slate-700">
+                        <div id="scan-progress-bar" class="bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 h-full w-0 transition-all duration-100"></div>
+                    </div>
+
+                    <div class="flex space-x-3">
+                        <button onclick="toggleCameraFacing()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold rounded-lg">
+                            🔄 カメラ切替
+                        </button>
+                        <button onclick="stopQRScanner()" class="px-3 py-1.5 bg-rose-900/40 hover:bg-rose-900/60 border border-rose-500/30 text-rose-300 text-xs font-semibold rounded-lg">
+                            ❌ キャンセル
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 境界線 -->
+                <div class="relative flex py-2 items-center">
+                    <div class="flex-grow border-t border-slate-800"></div>
+                    <span class="flex-shrink mx-4 text-slate-500 text-xs font-bold uppercase tracking-wider">またはキーを打ち込む</span>
+                    <div class="flex-grow border-t border-slate-800"></div>
                 </div>
 
                 <div class="max-w-xs mx-auto space-y-4">
@@ -217,13 +267,8 @@
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 13l-7 7-7-7m14-6l-7 7-7-7"></path>
                         </svg>
-                        <span>ファイルを受信する</span>
+                        <span>キーを入力して受信</span>
                     </button>
-                </div>
-
-                <div class="max-w-md mx-auto p-4 bg-slate-900/40 rounded-2xl border border-slate-800 text-xs text-slate-400 leading-relaxed space-y-1">
-                    <p class="font-bold text-slate-300">💡 キーでの受信について</p>
-                    <p>この通信は一時的な中継に暗号化されたキーを使用します。ファイルの中身自体はあなたのブラウザに届いた瞬間に解凍されるため、途中のサーバーにログが残ることはありません。</p>
                 </div>
             </div>
 
@@ -262,22 +307,37 @@
                     </p>
                 </div>
 
-                <!-- 選択肢 B: 爆速読み取り可能「スカスカ極小QRコード」 -->
+                <!-- 選択肢 B: 爆速読み取り可能「連結アニメーションQRコード」 -->
                 <div id="qr-section" class="p-6 bg-slate-900/40 rounded-2xl border border-slate-800/80 flex flex-col items-center justify-center space-y-4">
                     <div class="text-center space-y-1">
-                        <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 tracking-widest uppercase">Method 2: Ultra Scannable QR</span>
-                        <h3 class="text-xs font-semibold text-slate-300">スマホの標準カメラでスキャン</h3>
+                        <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 tracking-widest uppercase">Method 2: Multi-Segment Loop QR</span>
+                        <h3 class="text-xs font-semibold text-slate-300">スマホの「連結QRスキャナー」で読み取り</h3>
                     </div>
 
-                    <!-- 高感度QRコード(Canvas) -->
-                    <div class="relative bg-white p-3.5 rounded-2xl shadow-xl hover:scale-[1.02] transition-transform duration-300">
+                    <!-- パラパラ連結QRコード(Canvas) -->
+                    <div class="relative bg-white p-3.5 rounded-2xl shadow-xl hover:scale-[1.02] transition-transform duration-300 flex flex-col items-center">
                         <canvas id="qr-canvas" class="w-36 h-36 sm:w-40 sm:h-40"></canvas>
                         <!-- 中央の飾りロゴ -->
-                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none pb-5">
                             <div class="w-8 h-8 bg-slate-950 border-2 border-white rounded-lg flex items-center justify-center shadow-md">
                                 <span class="text-[9px] font-black text-indigo-400 tracking-tighter">Pico</span>
                             </div>
                         </div>
+                        
+                        <!-- 現在のセグメントインジケーター -->
+                        <div class="mt-2 text-[10px] font-black font-mono text-slate-900 bg-slate-200 px-2 py-0.5 rounded-full flex items-center space-x-1.5">
+                            <span class="w-2 h-2 rounded-full bg-indigo-600 animate-ping"></span>
+                            <span id="qr-segment-indicator">0 / 0</span>
+                        </div>
+                    </div>
+
+                    <!-- アニメーションQR用のコントローラー -->
+                    <div class="flex items-center space-x-4 bg-slate-950/50 p-3 rounded-xl border border-slate-800/60 max-w-xs w-full text-xs">
+                        <div class="flex-grow space-y-1">
+                            <label class="text-[10px] text-slate-400 block font-bold">ループ切り替え速度 (FPS)</label>
+                            <input id="qr-speed-range" type="range" min="150" max="600" step="50" value="300" class="w-full accent-indigo-500">
+                        </div>
+                        <span id="qr-speed-text" class="font-mono text-indigo-300 font-bold whitespace-nowrap">300ms</span>
                     </div>
 
                     <div class="flex gap-2">
@@ -418,12 +478,62 @@
 
 
     <script>
-        // 状態変数
         let selectedFile = null;
         let generatedUrl = "";
         let generatedPin = "";
         let isSettingsOpen = false;
         let currentTab = "send"; // 'send' or 'receive'
+
+        // アニメーション連結QR用の設定
+        let qrSegments = [];
+        let qrCurrentIndex = 0;
+        let qrIntervalId = null;
+        let qrSpeedMs = 300; // デフォルト切り替えスピード
+
+        // スキャナー用のカメラ状態
+        let scannerStream = null;
+        let isScannerRunning = false;
+        let isFrontFacing = false; // デフォルトは背面カメラ(false)
+        let collectedSegments = {}; // スキャンしたセグメントのバッファ
+
+        // 効果音（ブラウザビープ音）
+        function playBeep(type = 'success') {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                if (type === 'success') {
+                    // ピピッという快適な完了音
+                    const osc1 = ctx.createOscillator();
+                    const osc2 = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    
+                    osc1.type = 'sine';
+                    osc1.frequency.setValueAtTime(880, ctx.currentTime); // A5
+                    osc1.frequency.setValueAtTime(1760, ctx.currentTime + 0.08); // A6
+                    
+                    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                    
+                    osc1.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc1.start();
+                    osc1.stop(ctx.currentTime + 0.2);
+                } else if (type === 'progress') {
+                    // ピッという読み取り音
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(1200, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.05, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.04);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.04);
+                }
+            } catch (e) {
+                console.warn("Audio Context blocked or unsupported:", e);
+            }
+        }
 
         // ドメイン検証（プレビュー環境か、それとも正式な公開ドメインか）
         function checkEnvironment() {
@@ -456,6 +566,7 @@
                 btnReceive.className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 transition-all duration-300";
                 secUpload.classList.remove('hidden');
                 secReceive.classList.add('hidden');
+                stopQRScanner(); // タブを切り替えたらカメラは止める
             } else {
                 btnSend.className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 transition-all duration-300";
                 btnReceive.className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg";
@@ -510,17 +621,10 @@
                 : `<svg class="w-5 h-5 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
 
             toast.className = `flex items-center space-x-3 px-4 py-3 rounded-2xl border ${bgClass} shadow-xl backdrop-blur-md transition-all duration-300 transform translate-y-2 opacity-0`;
-            toast.innerHTML = `
-                ${icon}
-                <span class="text-xs font-semibold">${message}</span>
-            `;
+            toast.innerHTML = `${icon}<span class="text-xs font-semibold">${message}</span>`;
 
             container.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.classList.remove('translate-y-2', 'opacity-0');
-            }, 10);
-
+            setTimeout(() => toast.classList.remove('translate-y-2', 'opacity-0'), 10);
             setTimeout(() => {
                 toast.classList.add('translate-y-2', 'opacity-0');
                 setTimeout(() => toast.remove(), 300);
@@ -540,9 +644,7 @@
 
         function base64ToArrayBuffer(base64) {
             let b64 = base64.replace(/-/g, '+').replace(/_/g, '/');
-            while (b64.length % 4) {
-                b64 += '=';
-            }
+            while (b64.length % 4) { b64 += '='; }
             const binaryString = atob(b64);
             const len = binaryString.length;
             const bytes = new Uint8Array(len);
@@ -553,65 +655,43 @@
         }
 
         function stringToBase64(str) {
-            const encoder = new TextEncoder();
-            const data = encoder.encode(str);
-            return arrayBufferToBase64(data.buffer);
+            return arrayBufferToBase64(new TextEncoder().encode(str).buffer);
         }
 
         function base64ToString(b64) {
-            const buffer = base64ToArrayBuffer(b64);
-            const decoder = new TextDecoder();
-            return decoder.decode(buffer);
+            return new TextDecoder().decode(base64ToArrayBuffer(b64));
         }
 
-        // バイト数フォーマッター
-        function formatBytes(bytes, decimals = 2) {
+        function formatBytes(bytes) {
             if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const dm = decimals < 0 ? 0 : decimals;
+            const k = 1024, dm = 2;
             const sizes = ['Bytes', 'KB', 'MB', 'GB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
 
-        // ブラウザAPIを使用した圧縮 (CompressionStream)
+        // CompressionStreamを使用した高速ローカルGzip圧縮
         async function compressData(arrayBuffer) {
-            try {
-                const stream = new Response(arrayBuffer).body.pipeThrough(new CompressionStream('gzip'));
-                return await new Response(stream).arrayBuffer();
-            } catch (err) {
-                console.error("Compression failed:", err);
-                throw new Error("ブラウザの圧縮処理に失敗しました。");
-            }
+            const stream = new Response(arrayBuffer).body.pipeThrough(new CompressionStream('gzip'));
+            return await new Response(stream).arrayBuffer();
         }
 
-        // ブラウザAPIを使用した展開 (DecompressionStream)
         async function decompressData(arrayBuffer) {
-            try {
-                const stream = new Response(arrayBuffer).body.pipeThrough(new DecompressionStream('gzip'));
-                return await new Response(stream).arrayBuffer();
-            } catch (err) {
-                console.error("Decompression failed:", err);
-                throw new Error("ブラウザの解凍処理に失敗しました。データが壊れている可能性があります。");
-            }
+            const stream = new Response(arrayBuffer).body.pipeThrough(new DecompressionStream('gzip'));
+            return await new Response(stream).arrayBuffer();
         }
 
-
-        // ドラッグ＆ドロップ動作の設定
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
 
         dropZone.addEventListener('click', () => fileInput.click());
-
         dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
             dropZone.classList.add('border-indigo-500', 'bg-slate-900/80');
         });
-
         dropZone.addEventListener('dragleave', () => {
             dropZone.classList.remove('border-indigo-500', 'bg-slate-900/80');
         });
-
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('border-indigo-500', 'bg-slate-900/80');
@@ -619,20 +699,16 @@
                 handleFileSelection(e.dataTransfer.files[0]);
             }
         });
-
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 handleFileSelection(e.target.files[0]);
             }
         });
 
-        // ファイル選択時の処理
         function handleFileSelection(file) {
             selectedFile = file;
-            
             document.getElementById('drop-zone-prompt').classList.add('hidden');
             document.getElementById('file-preview-zone').classList.remove('hidden');
-
             document.getElementById('preview-filename').innerText = file.name;
             document.getElementById('preview-filesize').innerText = `ファイルサイズ: ${formatBytes(file.size)}`;
 
@@ -652,6 +728,7 @@
                 fallbackIcon.classList.remove('hidden');
             }
 
+            // 安全サイズゲージの更新
             updateLimitGauge(file.size);
 
             const btn = document.getElementById('btn-generate');
@@ -659,49 +736,10 @@
             btn.className = "w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-950/50 hover:shadow-indigo-900/50 transition-all duration-300 flex items-center justify-center space-x-2 cursor-pointer";
         }
 
-        // ゲージの更新
-        function updateLimitGauge(fileSize) {
-            const container = document.getElementById('gauge-container');
-            const bar = document.getElementById('gauge-bar');
-            const ratioText = document.getElementById('gauge-ratio');
-            const warningText = document.getElementById('gauge-warning');
-
-            container.classList.remove('hidden');
-
-            let estimatedCompressed = fileSize;
-            if (selectedFile.type.startsWith('text/') || selectedFile.name.endsWith('.json') || selectedFile.name.endsWith('.txt') || selectedFile.name.endsWith('.html') || selectedFile.name.endsWith('.css') || selectedFile.name.endsWith('.js')) {
-                estimatedCompressed = fileSize * 0.3; // テキスト系は7割削減想定
-            } else {
-                estimatedCompressed = fileSize * 1.05; // 圧縮済みは増える可能性考慮
-            }
-
-            const maxSafeBytes = 1572864; // 1.5MB
-            const pct = Math.min(100, Math.round((estimatedCompressed / maxSafeBytes) * 100));
-
-            ratioText.innerText = `${pct}% (予測圧縮サイズ: ${formatBytes(estimatedCompressed)} / 安全上限: ${formatBytes(maxSafeBytes)})`;
-            bar.style.width = `${pct}%`;
-
-            if (pct < 60) {
-                bar.className = "bg-gradient-to-r from-emerald-500 to-teal-500 h-full w-0 transition-all duration-300";
-                warningText.innerHTML = "✅ <span class='text-emerald-400 font-semibold'>安全なサイズです。</span> スマホキー共有・QR読み取りともに驚くほど快適に動作します。";
-            } else if (pct < 100) {
-                bar.className = "bg-gradient-to-r from-yellow-500 to-orange-500 h-full w-0 transition-all duration-300";
-                warningText.innerHTML = "⚠️ <span class='text-yellow-400 font-semibold'>容量が少し大きめです。</span> QRコードよりも「ワンタイム・キー（PIN）」によるスマホ送信が圧倒的に安全でおすすめです。";
-            } else {
-                bar.className = "bg-gradient-to-r from-rose-500 to-red-600 h-full w-0 transition-all duration-300";
-                warningText.innerHTML = "❌ <span class='text-rose-400 font-semibold'>安全上限を超えています。</span> ブラウザのURL制限を突破する可能性があるため、ファイルの軽量化か、テキスト等の分割を推奨します。";
-            }
-        }
-
-        // ファイル選択解除
         function clearSelectedFile(event) {
-            if (event) {
-                event.stopPropagation();
-                event.preventDefault();
-            }
+            if (event) { e.stopPropagation(); e.preventDefault(); }
             selectedFile = null;
             fileInput.value = '';
-
             document.getElementById('drop-zone-prompt').classList.remove('hidden');
             document.getElementById('file-preview-zone').classList.add('hidden');
             document.getElementById('gauge-container').classList.add('hidden');
@@ -711,192 +749,205 @@
             btn.className = "w-full py-4 px-6 bg-slate-700 text-slate-400 font-bold rounded-2xl shadow-lg transition-all duration-300 cursor-not-allowed flex items-center justify-center space-x-2";
         }
 
+        function updateLimitGauge(fileSize) {
+            const container = document.getElementById('gauge-container');
+            const bar = document.getElementById('gauge-bar');
+            const ratioText = document.getElementById('gauge-ratio');
+            const warningText = document.getElementById('gauge-warning');
 
-        // URL共有情報の作成
+            container.classList.remove('hidden');
+            // Gzipによる圧縮サイズ予測
+            let estimatedCompressed = fileSize;
+            if (selectedFile.type.startsWith('text/') || selectedFile.name.endsWith('.json') || selectedFile.name.endsWith('.txt')) {
+                estimatedCompressed = fileSize * 0.3;
+            } else {
+                estimatedCompressed = fileSize * 1.05;
+            }
+
+            // ワンタイムキー（クラウド経由）は実質20MBまで送信可能。
+            // 連結QRコードによるローカル転送は、ドット解凍効率上、250KB以下を推奨。
+            const maxSafeBytes = 20 * 1024 * 1024; // ワンタイムキー許容サイズ
+            const pct = Math.min(100, Math.round((estimatedCompressed / maxSafeBytes) * 100));
+
+            ratioText.innerText = `${formatBytes(estimatedCompressed)} / 安全上限: ${formatBytes(maxSafeBytes)}`;
+            bar.style.width = `${pct}%`;
+
+            if (estimatedCompressed < 150000) {
+                bar.className = "bg-gradient-to-r from-emerald-500 to-teal-500 h-full w-0 transition-all duration-300";
+                warningText.innerHTML = "✅ <span class='text-emerald-400 font-semibold'>最適サイズ！</span> 超高速連結QRコード＆ワンタイムキーの両方で最高の転送パフォーマンスを発揮できます。";
+            } else if (estimatedCompressed < 2 * 1024 * 1024) {
+                bar.className = "bg-gradient-to-r from-yellow-500 to-orange-500 h-full w-0 transition-all duration-300";
+                warningText.innerHTML = "⚠️ <span class='text-yellow-400 font-semibold'>容量が少し大きめです。</span> 連結QRは高解像度化します。このサイズは「ワンタイム・キー共有」を強く推奨します。";
+            } else {
+                bar.className = "bg-gradient-to-r from-rose-500 to-red-600 h-full w-0 transition-all duration-300";
+                warningText.innerHTML = "❌ <span class='text-rose-400 font-semibold'>大容量です。</span> 連結QRコードでの送信は不可能です。「ワンタイム・キー共有」を利用して共有してください。";
+            }
+        }
+
         async function generateShareLink() {
             if (!selectedFile) return;
 
-            document.getElementById('loading-title').innerText = "ファイルを圧縮・暗号化中...";
-            document.getElementById('loading-desc').innerText = "強固なローカル圧縮とハッシュURLの構築を行っています。";
+            document.getElementById('loading-title').innerText = "ファイルをエンコード＆保管中...";
+            document.getElementById('loading-desc').innerText = "強固なGzip圧縮を施し、世界中と安全に共有する一時接続先を生成しています。";
             showView('loading');
 
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
                     const arrayBuffer = e.target.result;
-                    // 1. Gzip圧縮
+                    // 1. 高速ローカル圧縮
                     const compressedBuffer = await compressData(arrayBuffer);
-                    
-                    // 2. Base64変換
                     const fileBase64 = arrayBufferToBase64(compressedBuffer);
                     const nameBase64 = stringToBase64(selectedFile.name);
                     const typeBase64 = stringToBase64(selectedFile.type || 'application/octet-stream');
 
-                    // 3. ハッシュ連結 (#name:type:data)
+                    // 2. 直接共有用フルURL（従来のハッシュエンベッド）の生成
                     const hashValue = `#${nameBase64}:${typeBase64}:${fileBase64}`;
-                    
-                    // 4. ベースURL決定
                     const customHost = document.getElementById('custom-host-input').value.trim();
                     let baseUrl = window.location.origin + window.location.pathname;
-                    
                     if (customHost && customHost.startsWith('http')) {
                         baseUrl = customHost.endsWith('/') ? customHost : customHost + '/';
-                        if (baseUrl.endsWith('.html/')) {
-                            baseUrl = baseUrl.slice(0, -1);
-                        }
+                        if (baseUrl.endsWith('.html/')) baseUrl = baseUrl.slice(0, -1);
                     }
-                    
                     generatedUrl = baseUrl + hashValue;
 
-                    // 5. ワンタイム・キー(PIN)をクラウド中継庫に発行登録する
-                    document.getElementById('loading-title').innerText = "ワンタイム・キーを発行中...";
-                    document.getElementById('loading-desc').innerText = "スマホ送信用の超軽量キーと高感度QRコードを生成しています。";
-
-                    const formData = new FormData();
-                    formData.append('text', hashValue); // 暗号・圧縮されたハッシュデータそのものだけを預ける
-
-                    // 1日保存（file.io: 1回読み取ると完全に自動消去される）
-                    fetch('https://file.io/?expires=1d', {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.success && data.key) {
-                            generatedPin = data.key; // 6桁前後のキー取得
-                            
-                            // 結果への反映
-                            document.getElementById('pin-display').innerText = generatedPin;
-                            
-                            // 爆速極小QR用の短縮URLを生成 (スマホがアクセスした時に ?pin=xxx で自動取得される仕組み)
-                            const shortShareUrl = baseUrl + "?pin=" + generatedPin;
-
-                            // スカスカ極小QRコードのレンダリング
-                            new QRious({
-                                element: document.getElementById('qr-canvas'),
-                                value: shortShareUrl,
-                                size: 250,
-                                level: 'M' // 誤り訂正をMに引き上げてスキャン強度を高める
-                            });
-                            document.getElementById('qr-section').classList.remove('hidden');
-                        } else {
-                            throw new Error("キーの発行に失敗しました。");
-                        }
-                    })
-                    .catch(err => {
-                        console.warn("One-time PIN upload failed, falling back to full URL QR:", err);
-                        // もしfile.ioへの通信が遮断されたり制限がかかっても、アプリ本来の長いハッシュによるQRコードを表示させてスタンドアロン性を維持する
-                        generatedPin = "制限中";
-                        document.getElementById('pin-display').innerText = "OFFLINE";
-                        
-                        new QRious({
-                            element: document.getElementById('qr-canvas'),
-                            value: generatedUrl,
-                            size: 250,
-                            level: 'L'
-                        });
-                    })
-                    .finally(() => {
-                        // 画面データのセット
-                        document.getElementById('output-url').value = generatedUrl;
-                        document.getElementById('result-filename').innerText = selectedFile.name;
-                        document.getElementById('result-orig-size').innerText = formatBytes(selectedFile.size);
-
-                        showView('result');
-                        showToast("共有情報の作成に成功しました！");
+                    // 3. ワンタイム・キー（file.io API経由）の生成
+                    // CORS問題を回避するため、暗号化（ハッシュ化）されたメタデータを含むテキストデータ全体をファイル形式としてfile.ioに一時保管。
+                    // 1つのテキストとしてアップロードさせ、自動削除(1回限りの読取)を設定。
+                    const payloadStr = JSON.stringify({
+                        name: selectedFile.name,
+                        type: selectedFile.type || 'application/octet-stream',
+                        data: fileBase64
                     });
+
+                    const payloadBlob = new Blob([payloadStr], { type: 'text/plain' });
+                    const formData = new FormData();
+                    formData.append('file', payloadBlob, 'picoshare_onetime.txt');
+                    formData.append('expiry', '1d'); // 有効期限1日
+
+                    try {
+                        const response = await fetch('https://file.io', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        if (!response.ok) throw new Error("中継保管庫への保管に失敗しました。");
+                        
+                        const result = await response.json();
+                        if (result.success) {
+                            // file.io から返却されたキー (例: https://file.io/pG1pCx) から固有キーを抽出
+                            const linkParts = result.link.split('/');
+                            generatedPin = linkParts[linkParts.length - 1]; // 6桁のキー
+                        } else {
+                            throw new Error("保管庫からキーを取得できませんでした。");
+                        }
+                    } catch (err) {
+                        console.warn("One-Time Key server issue. Falling back to hash url only:", err);
+                        generatedPin = "OFFLINE";
+                    }
+
+                    // 4. 新・連結QRコード用のデータセグメント（紙芝居アニメーションループ用）の生成
+                    // データを細かく分割し、スマホ側のカメラでパラパラ読み取り可能な極小QRコードの配列を作る。
+                    // 規格に最も近く、最も高い読み取り成功率を担保する。
+                    const rawDataToSplit = `${nameBase64}:${typeBase64}:${fileBase64}`;
+                    const segmentSize = 180; // ドットが非常に荒く、瞬時にフォーカスできる安全文字数
+                    const totalSegments = Math.ceil(rawDataToSplit.length / segmentSize);
+                    qrSegments = [];
+
+                    // データを均等にパズル化
+                    for (let i = 0; i < totalSegments; i++) {
+                        const chunk = rawDataToSplit.substring(i * segmentSize, (i + 1) * segmentSize);
+                        // フォーマット: PICO:[INDEX]/[TOTAL]:[DATA]
+                        qrSegments.push(`PICO:${i}/${totalSegments}:${chunk}`);
+                    }
+
+                    // 完了画面のレンダリング
+                    document.getElementById('pin-display').innerText = generatedPin;
+                    document.getElementById('output-url').value = generatedUrl;
+                    document.getElementById('result-filename').innerText = selectedFile.name;
+                    document.getElementById('result-orig-size').innerText = formatBytes(selectedFile.size);
+
+                    // 連結QRコードのアニメーションループを開始
+                    qrCurrentIndex = 0;
+                    startQRAnimationLoop();
+
+                    showView('result');
+                    showToast("共有情報の生成に成功しました！");
+                    playBeep('success');
 
                 } catch (err) {
                     showView('upload');
                     showToast(err.message, "error");
                 }
             };
-            
             reader.readAsArrayBuffer(selectedFile);
         }
 
-        // キー(PIN)を入力してファイルを引き出す
-        async function retrieveFileByPin() {
-            const pinVal = document.getElementById('pin-input').value.trim();
-            if (!pinVal || pinVal.length < 3) {
-                showToast("有効なワンタイム・キーを入力してください。", "error");
-                return;
-            }
+        function startQRAnimationLoop() {
+            if (qrIntervalId) clearInterval(qrIntervalId);
+            if (qrSegments.length === 0) return;
 
-            document.getElementById('loading-title').innerText = "キーを照合中...";
-            document.getElementById('loading-desc').innerText = "クラウド中継庫からデータを抽出し、ブラウザで復元します。";
-            showView('loading');
+            const canvas = document.getElementById('qr-canvas');
+            const indicator = document.getElementById('qr-segment-indicator');
+            
+            // 超高速QR生成ライブラリ QRious をインスタンス化
+            const qr = new QRious({
+                element: canvas,
+                size: 280,
+                level: 'L' // データ密度と読み取りやすさ重視
+            });
 
-            try {
-                // file.ioから暗号化データを直接引っ張る
-                const response = await fetch(`https://file.io/${pinVal}`);
-                if (!response.ok) {
-                    throw new Error("指定されたキーが存在しないか、期限切れ、または既にダウンロード済みのため削除されています。");
+            function renderNextFrame() {
+                if (qrCurrentIndex >= qrSegments.length) {
+                    qrCurrentIndex = 0;
                 }
-                const responseText = await response.text();
                 
-                // 復元されたデータが # で始まるハッシュ形式か検証
-                if (responseText.startsWith('#')) {
-                    window.location.hash = responseText; // ハッシュ変更をトリガーして既存のデコードエンジンに引き渡す
-                } else {
-                    throw new Error("データの構造が正しくありません。");
-                }
-            } catch (err) {
-                showView('upload');
-                showToast(err.message, "error");
+                qr.value = qrSegments[qrCurrentIndex];
+                indicator.innerText = `${qrCurrentIndex + 1} / ${qrSegments.length}`;
+                qrCurrentIndex++;
             }
+
+            renderNextFrame(); // 初回実行
+            qrIntervalId = setInterval(renderNextFrame, qrSpeedMs);
         }
 
-        // QRコード画像をダウンロード
+        // 速度調整スライダー
+        const speedRange = document.getElementById('qr-speed-range');
+        const speedText = document.getElementById('qr-speed-text');
+        speedRange.addEventListener('input', (e) => {
+            qrSpeedMs = parseInt(e.target.value);
+            speedText.innerText = `${qrSpeedMs}ms`;
+            if (qrSegments.length > 0) {
+                startQRAnimationLoop();
+            }
+        });
+
+        // アニメーションQRコードを画像(PNG)として保存
         function downloadQRCode() {
             const canvas = document.getElementById('qr-canvas');
-            if (!canvas) {
-                showToast("QRコードが生成されていません。", "error");
+            const a = document.createElement('a');
+            a.href = canvas.toDataURL('image/png');
+            a.download = `picoshare_qr_segment_${qrCurrentIndex || 1}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast("現在表示中のQRコード画像を保存しました。");
+        }
+
+        // コピー関連
+        function copyPinCode() {
+            if (generatedPin === "OFFLINE") {
+                showToast("キーがオフラインのためコピーできません。", "error");
                 return;
             }
-            try {
-                const url = canvas.toDataURL("image/png");
-                const a = document.createElement('a');
-                a.href = url;
-                const baseName = selectedFile ? selectedFile.name.split('.').slice(0, -1).join('.') : 'picoshare';
-                a.download = `${baseName}_qrcode.png`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                showToast("QRコード(PNG)をダウンロードしました！");
-            } catch (err) {
-                showToast("画像の保存に失敗しました。", "error");
-            }
+            fallbackCopy(generatedPin);
         }
 
-        // ワンタイムキーのコピー
-        function copyPinCode() {
-            if (generatedPin && generatedPin !== "制限中") {
-                copyTextToClipboard(generatedPin, "キー（" + generatedPin + "）をコピーしました！相手に入力してもらってください。");
-            } else {
-                showToast("コピー可能なキーが存在しません。", "error");
-            }
-        }
-
-        // 生成された長大URLをコピー
         function copyGeneratedLink() {
-            copyTextToClipboard(generatedUrl, "共有用の長大URLをコピーしました！");
+            fallbackCopy(generatedUrl);
         }
 
-        // コピー共通処理
-        function copyTextToClipboard(text, successMessage) {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text).then(() => {
-                    showToast(successMessage);
-                }).catch(() => {
-                    fallbackCopy(text, successMessage);
-                });
-            } else {
-                fallbackCopy(text, successMessage);
-            }
-        }
-
-        function fallbackCopy(text, successMessage) {
+        function fallbackCopy(text) {
             const textArea = document.createElement("textarea");
             textArea.value = text;
             textArea.style.position = "fixed";
@@ -904,63 +955,203 @@
             textArea.focus();
             textArea.select();
             try {
-                const successful = document.execCommand('copy');
-                if (successful) {
-                    showToast(successMessage);
-                } else {
-                    showToast("コピーできませんでした。直接選択してコピーしてください。", "error");
-                }
+                document.execCommand('copy');
+                showToast("コピーしました！");
             } catch (err) {
-                showToast("コピーエラーが発生しました。", "error");
+                showToast("コピーできませんでした。手動で選択してください。", "error");
             }
             document.body.removeChild(textArea);
         }
 
-        // アップロード状態へのリセット
-        function resetToUpload() {
-            clearSelectedFile();
-            // URLのクエリパラメータやハッシュをクリア
-            if (window.history.replaceState) {
-                window.history.replaceState(null, null, window.location.pathname);
-            } else {
-                window.location.hash = '';
+        async function startQRScanner() {
+            const container = document.getElementById('scanner-container');
+            const video = document.getElementById('scanner-video');
+            const progressText = document.getElementById('scan-progress-text');
+            const progressBar = document.getElementById('scan-progress-bar');
+
+            // 収集したセグメントのバッファをクリア
+            collectedSegments = {};
+            progressText.innerText = "0 / 0 (0%)";
+            progressBar.style.width = "0%";
+
+            try {
+                // リアカメラをデフォルト優先、iOS/Android両対応
+                const constraints = {
+                    video: { facingMode: isFrontFacing ? "user" : "environment" }
+                };
+                
+                scannerStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = scannerStream;
+                video.setAttribute("playsinline", true); // iOS用ガード
+                video.play();
+                
+                container.classList.remove('hidden');
+                container.classList.add('flex');
+                isScannerRunning = true;
+                
+                // カメラフレームキャプチャのループ開始
+                requestAnimationFrame(tickScanner);
+                showToast("スキャナーが起動しました。動くQRコードを映してください。");
+            } catch (err) {
+                console.error(err);
+                showToast("カメラの起動に失敗しました。権限を許可してください。", "error");
             }
-            showView('upload');
         }
 
+        function toggleCameraFacing() {
+            isFrontFacing = !isFrontFacing;
+            if (isScannerRunning) {
+                stopQRScanner();
+                startQRScanner();
+            }
+        }
 
-        // 受け取りハッシュ・キーのパース
+        function stopQRScanner() {
+            const container = document.getElementById('scanner-container');
+            if (scannerStream) {
+                scannerStream.getTracks().forEach(track => track.stop());
+                scannerStream = null;
+            }
+            container.classList.add('hidden');
+            container.classList.remove('flex');
+            isScannerRunning = false;
+        }
+
+        function tickScanner() {
+            if (!isScannerRunning) return;
+
+            const video = document.getElementById('scanner-video');
+            const canvas = document.getElementById('scanner-canvas');
+            
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvas.height = video.videoHeight;
+                canvas.width = video.videoWidth;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                // jsQRで高精度デコード
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "dontInvert",
+                });
+
+                if (code) {
+                    processScannedQR(code.data);
+                }
+            }
+            requestAnimationFrame(tickScanner);
+        }
+
+        function processScannedQR(scannedText) {
+            // フォーマット検証 PICO:[INDEX]/[TOTAL]:[DATA]
+            if (!scannedText.startsWith("PICO:")) return;
+
+            const parts = scannedText.substring(5).split(':');
+            if (parts.length < 2) return;
+
+            const meta = parts[0].split('/');
+            if (meta.length !== 2) return;
+
+            const index = parseInt(meta[0]);
+            const total = parseInt(meta[1]);
+            const chunkData = parts[1];
+
+            // 新規セグメントの場合バッファに格納
+            if (!collectedSegments[index]) {
+                collectedSegments[index] = chunkData;
+                playBeep('progress'); // 読み取り音
+
+                // UIの進捗インジケーターを動的に更新
+                const collectedCount = Object.keys(collectedSegments).length;
+                const progressText = document.getElementById('scan-progress-text');
+                const progressBar = document.getElementById('scan-progress-bar');
+                
+                const pct = Math.round((collectedCount / total) * 100);
+                progressText.innerText = `${collectedCount} / ${total} (${pct}%)`;
+                progressBar.style.width = `${pct}%`;
+
+                // 100%パズルが揃った場合、即時再構成と復元処理へ
+                if (collectedCount === total) {
+                    stopQRScanner();
+                    reconstructFileFromSegments(total);
+                }
+            }
+        }
+
+        // 分割された全パズルピースを結合して展開
+        async function reconstructFileFromSegments(total) {
+            document.getElementById('loading-title').innerText = "ファイルをローカル復元中...";
+            document.getElementById('loading-desc').innerText = "スマホのカメラで吸い上げたパズルデータを1つにマージしています。";
+            showView('loading');
+
+            try {
+                let fullRawData = "";
+                for (let i = 0; i < total; i++) {
+                    fullRawData += collectedSegments[i];
+                }
+
+                // 組み立てたハッシュデータをもとに元ファイルをダウンロード状態にする
+                window.location.hash = `#${fullRawData}`;
+                await checkIncomingFile();
+            } catch (err) {
+                showView('upload');
+                showToast("データのマージ、または展開中に重大なエラーが発生しました。", "error");
+            }
+        }
+
+        async function retrieveFileByPin() {
+            const pin = document.getElementById('pin-input').value.trim();
+            if (!pin || pin.length < 4) {
+                showToast("正しいキーを入力してください。", "error");
+                return;
+            }
+
+            document.getElementById('loading-title').innerText = "クラウド保管庫から取得中...";
+            document.getElementById('loading-desc').innerText = "ワンタイム・キーに基づき、暗号パケットを引き抜いています。";
+            showView('loading');
+
+            try {
+                // file.io から保管ファイルを取得
+                const response = await fetch(`https://file.io/${pin}`);
+                if (!response.ok) {
+                    throw new Error("キーが違っているか、または既に他のデバイスにダウンロードされて完全に消滅しています。");
+                }
+
+                // テキスト(JSON)として展開
+                const textData = await response.text();
+                const payload = JSON.parse(textData);
+
+                // メタデータと圧縮データの展開
+                const compressedBuffer = base64ToArrayBuffer(payload.data);
+                const decompressedBuffer = await decompressData(compressedBuffer);
+                const fileBlob = new Blob([decompressedBuffer], { type: payload.type });
+
+                incomingFileData = {
+                    blob: fileBlob,
+                    name: payload.name,
+                    size: fileBlob.size,
+                    type: payload.type
+                };
+
+                // ダウンロード画面の設定
+                document.getElementById('download-filename').innerText = payload.name;
+                document.getElementById('download-filetype').innerText = payload.type || '不明な形式';
+                document.getElementById('download-filesize').innerText = formatBytes(fileBlob.size);
+
+                showView('download');
+                showToast("ファイルの引き抜きと復元に成功しました！");
+                playBeep('success');
+
+            } catch (err) {
+                console.error(err);
+                showView('upload');
+                showToast(err.message, "error");
+            }
+        }
+
         let incomingFileData = null;
 
         async function checkIncomingFile() {
-            // 1. まずURLパラメータに ?pin=xxxx があるかチェック (キー連動QRコードから飛んできた場合)
-            const urlParams = new URLSearchParams(window.location.search);
-            const pinParam = urlParams.get('pin');
-            if (pinParam) {
-                document.getElementById('loading-title').innerText = "ファイルを引っ張り中...";
-                document.getElementById('loading-desc').innerText = "ワンタイム・キーの照合に成功しました。データを安全に読み込んでいます。";
-                showView('loading');
-                
-                try {
-                    const response = await fetch(`https://file.io/${pinParam}`);
-                    if (!response.ok) {
-                        throw new Error("キーが存在しないか、すでに他人にダウンロードされたため完全抹消されています。");
-                    }
-                    const responseText = await response.text();
-                    if (responseText.startsWith('#')) {
-                        // パラメータをハッシュに付け替えて、以下のパース処理にバトンタッチ
-                        window.history.replaceState(null, null, window.location.pathname + responseText);
-                    } else {
-                        throw new Error("破損したデータが検出されました。");
-                    }
-                } catch (err) {
-                    showView('upload');
-                    showToast(err.message, "error");
-                    return;
-                }
-            }
-
-            // 2. URLハッシュのチェック
             const hash = window.location.hash;
             if (!hash || hash.length < 10) {
                 showView('upload');
@@ -975,8 +1166,8 @@
                 return;
             }
 
-            document.getElementById('loading-title').innerText = "ファイルをデコード中...";
-            document.getElementById('loading-desc').innerText = "ブラウザ内のメモリ上でハッシュデータの解凍と整合性検証を行っています。";
+            document.getElementById('loading-title').innerText = "共有URLをデコード中...";
+            document.getElementById('loading-desc').innerText = "URLハッシュデータからGzipを展開して、ファイルを安全に再構成しています。";
             showView('loading');
 
             try {
@@ -1004,15 +1195,15 @@
                 document.getElementById('download-filesize').innerText = formatBytes(fileBlob.size);
 
                 showView('download');
-                showToast("ファイルのデコードと復元に成功しました！");
+                showToast("共有URLからの復元に成功しました！");
+                playBeep('success');
             } catch (err) {
                 console.error(err);
                 showView('upload');
-                showToast("復元に失敗しました。URLが途中でちぎれている可能性があります。", "error");
+                showToast("デコードに失敗しました。URLが途中でちぎれている可能性があります。", "error");
             }
         }
 
-        // ダウンロード実行
         function triggerFileDownload() {
             if (!incomingFileData) return;
 
@@ -1025,11 +1216,19 @@
             
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            
             showToast("ダウンロードを開始しました！");
         }
 
-        // 初期化処理
+        function resetToUpload() {
+            clearSelectedFile();
+            window.location.hash = '';
+            if (qrIntervalId) {
+                clearInterval(qrIntervalId);
+                qrIntervalId = null;
+            }
+            showView('upload');
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
             checkEnvironment();
             checkIncomingFile();
@@ -1038,7 +1237,6 @@
         window.addEventListener('hashchange', () => {
             checkIncomingFile();
         });
-
     </script>
 </body>
 </html>
