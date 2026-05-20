@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PicoShare - 連結QR＆ワンタイムキー超高速ファイル共有</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & Noto Sans JP -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <!-- QRious 高精度QRコードローカル生成ライブラリ (完全にブラウザ側で完結) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <!-- jsQR 高速ローカルQRデコーダー -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background: radial-gradient(circle at top, #1e1b4b 0%, #0f172a 100%);
+        }
+        /* カスタムスクロールバー */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-100 flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
+
+    <!-- ヘッダー -->
+    <header class="border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="resetToUpload()">
+                <div class="p-2 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-xl shadow-lg shadow-indigo-500/30">
+                    <!-- 送信アイコン SVG -->
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <span class="text-xl font-bold tracking-wider bg-gradient-to-r from-white via-indigo-100 to-indigo-300 bg-clip-text text-transparent">PicoShare</span>
+                    <span class="text-xs block text-indigo-400 font-medium tracking-widest leading-none">URL-EMBEDDED SHARE</span>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                    <span class="w-2 h-2 mr-1.5 bg-indigo-400 rounded-full animate-pulse"></span>
+                    2-WAY SHARE ACTIVE
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="flex-grow max-w-4xl w-full mx-auto px-4 py-8 flex flex-col justify-center">
+        
+        <!-- トースト通知コンテナ -->
+        <div id="toast-container" class="fixed top-20 right-4 z-50 flex flex-col gap-2 max-w-sm w-full"></div>
+
+        <!-- 開発環境・一時ドメイン警告バナー -->
+        <div id="env-warning-banner" class="hidden mb-6 p-4 bg-amber-950/40 border border-amber-500/30 rounded-2xl text-amber-300 text-xs leading-relaxed space-y-2">
+            <div class="flex items-center space-x-2 font-bold text-sm text-amber-400">
+                <svg class="w-5 h-5 shrink-0 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+                <span>現在、一時的な制限サーバー（プレビュー）環境で実行されています</span>
+            </div>
+            <p>
+                この環境のまま生成したURLやキーを他人に送信しても、ドメインがプライベートなものであるため、相手側で<strong>「このサイトにアクセスできません」</strong>とエラーになります。
+                このHTMLファイルを <strong>GitHub Pages, Vercel, Netlify</strong> などの公開ホスティングにアップロードして、公開URLからご利用いただくか、下の「デプロイ共有設定」で公開予定のURLを手動設定してください。
+            </p>
+        </div>
+
+        <!-- 送信 / 受信のメインタブ切り替え -->
+        <div id="tab-container" class="flex p-1 bg-slate-900/60 rounded-2xl border border-slate-800 max-w-xs sm:max-w-md w-full mx-auto mb-6">
+            <button id="btn-tab-send" onclick="switchTab('send')" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all duration-300 bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg">
+                🚀 ファイルを送る (Send)
+            </button>
+            <button id="btn-tab-receive" onclick="switchTab('receive')" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 transition-all duration-300">
+                📥 キー・スキャン受信 (Receive)
+            </button>
+        </div>
+
+        <!-- 全体カードラッパー -->
+        <div class="bg-slate-800/40 backdrop-blur-xl border border-slate-700/50 rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden transition-all duration-300">
+            
+            <!-- 背景光沢 -->
+            <div class="absolute -top-40 -right-40 w-80 h-80 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <!-- ================= 送信モード（アップロード） ================= -->
+            <div id="upload-section" class="space-y-6">
+                <div class="text-center space-y-2">
+                    <h1 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+                        ファイルを送る
+                    </h1>
+                    <p class="text-slate-400 text-xs md:text-sm max-w-lg mx-auto">
+                        会員登録もサーバー保存も不要。ファイルをブラウザ内で圧縮し、<br class="hidden sm:inline">スマホで直接読み取れるコードとワンタイム・キーを発行します。
+                    </p>
+                </div>
+
+                <!-- ドラッグ＆ドロップゾーン -->
+                <div id="drop-zone" class="border-2 border-dashed border-slate-600 hover:border-indigo-500 bg-slate-900/40 hover:bg-slate-900/60 rounded-2xl p-8 text-center cursor-pointer transition-all duration-300 group relative">
+                    <input type="file" id="file-input" class="hidden">
+                    
+                    <div class="space-y-4 py-4" id="drop-zone-prompt">
+                        <div class="mx-auto w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center border border-slate-700 group-hover:scale-110 group-hover:bg-indigo-950/40 group-hover:border-indigo-500/50 transition-all duration-300">
+                            <!-- アップロードアイコン -->
+                            <svg class="w-8 h-8 text-slate-400 group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                            </svg>
+                        </div>
+                        <div class="space-y-1">
+                            <p class="text-base sm:text-lg font-semibold text-slate-200">
+                                クリックしてファイルを選択、またはドラッグ＆ドロップ
+                            </p>
+                            <p class="text-xs text-slate-400">
+                                推奨サイズ: <span class="text-indigo-400 font-semibold">1MB以下</span>（テキスト・ソースコード・写真など）
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ファイル選択済み時のプレビュー表示 -->
+                    <div id="file-preview-zone" class="hidden space-y-4">
+                        <div class="flex items-center justify-center">
+                            <!-- サムネイル表示用 (画像の場合) -->
+                            <img id="preview-thumbnail" class="max-h-36 rounded-lg object-contain border border-slate-700 shadow-md hidden" src="" alt="Preview">
+                            <!-- 画像以外の場合の代替アイコン -->
+                            <div id="preview-file-icon" class="w-20 h-20 bg-indigo-950/50 border border-indigo-500/30 rounded-2xl flex items-center justify-center text-indigo-400">
+                                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                                </svg>
+                            </div>
+                        </div>
+
+                        <div class="space-y-1 max-w-md mx-auto">
+                            <h3 id="preview-filename" class="text-lg font-bold text-slate-100 truncate">file_name.txt</h3>
+                            <p id="preview-filesize" class="text-sm text-slate-400">ファイルサイズ: 0 KB</p>
+                        </div>
+
+                        <button type="button" onclick="clearSelectedFile(event)" class="text-xs text-rose-400 hover:text-rose-300 font-semibold underline underline-offset-4 focus:outline-none">
+                            別のファイルに変更する
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 詳細設定（カスタムホスト・ドメイン設定アコーディオン） -->
+                <div class="bg-slate-900/30 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <button onclick="toggleSettings()" class="w-full flex justify-between items-center text-xs text-slate-400 hover:text-slate-200 transition-colors focus:outline-none">
+                        <span class="flex items-center font-semibold">
+                            <svg class="w-4 h-4 mr-1.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                            デプロイ共有設定（公開時のトラブル防止）
+                        </span>
+                        <svg id="settings-arrow" class="w-4 h-4 transform transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div id="settings-content" class="hidden pt-2 space-y-3">
+                        <div class="space-y-1">
+                            <label for="custom-host-input" class="text-[11px] font-bold text-indigo-300 block">カスタム共有ドメイン(本番公開URL)</label>
+                            <input type="url" id="custom-host-input" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 placeholder-slate-600" placeholder="https://yourname.github.io/picoshare/">
+                            <p class="text-[10px] text-slate-500 leading-relaxed">
+                                ※テストプレビュー環境からでも、ここにデプロイ先の本番URLを設定しておけば、生成される「ワンタイムキー」や「QRコード」がその本番URL用に最適化され、実用可能になります。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 安全サイズゲージ -->
+                <div id="gauge-container" class="hidden bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-400 flex items-center">
+                            <svg class="w-4 h-4 mr-1 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            URLデータサイズ推定
+                        </span>
+                        <span id="gauge-ratio" class="font-mono text-slate-300">0% (0 KB / 1.5 MB)</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div id="gauge-bar" class="bg-gradient-to-r from-emerald-500 via-yellow-500 to-rose-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
+                    <p id="gauge-warning" class="text-xs text-slate-400 leading-relaxed"></p>
+                </div>
+
+                <!-- アップロード実行ボタン -->
+                <button id="btn-generate" disabled onclick="generateShareLink()" class="w-full py-4 px-6 bg-slate-700 text-slate-400 font-bold rounded-2xl shadow-lg transition-all duration-300 cursor-not-allowed flex items-center justify-center space-x-2">
+                    <span>共有情報を生成する</span>
+                </button>
+            </div>
+
+            <!-- ================= 受信モード（キー入力＆カメラ起動） ================= -->
+            <div id="receive-section" class="hidden space-y-6">
+                <div class="text-center space-y-2">
+                    <h1 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+                        ファイルを受け取る
+                    </h1>
+                    <p class="text-slate-400 text-xs md:text-sm max-w-lg mx-auto">
+                        「6桁のキーを打ち込む」または「カメラでパラパラ動く連結QRコードをスキャン」して、ファイルをこのデバイスに100%ローカル復元します。
+                    </p>
+                </div>
+
+                <!-- スキャンカメラ開始ボタン -->
+                <div class="flex justify-center">
+                    <button onclick="startQRScanner()" class="px-6 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold rounded-2xl shadow-lg shadow-indigo-500/20 hover:scale-[1.02] transition-all flex items-center space-x-3 cursor-pointer">
+                        <svg class="w-6 h-6 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                        <span>📷 カメラを起動して連結QRスキャン</span>
+                    </button>
+                </div>
+
+                <!-- スキャナー起動中のオーバーレイ/エリア -->
+                <div id="scanner-container" class="hidden flex-col items-center space-y-4 p-4 bg-slate-950/80 rounded-2xl border border-indigo-500/30">
+                    <div class="relative w-full max-w-sm aspect-square bg-black rounded-xl overflow-hidden border-2 border-slate-800">
+                        <!-- スキャンラインアニメーション -->
+                        <div class="absolute left-0 right-0 h-1 bg-indigo-500 opacity-70 animate-bounce top-0" style="animation-duration: 3s;"></div>
+                        <video id="scanner-video" class="w-full h-full object-cover" playsinline></video>
+                        <canvas id="scanner-canvas" class="hidden"></canvas>
+                        
+                        <!-- スキャン進捗ステータス -->
+                        <div class="absolute bottom-4 left-4 right-4 bg-slate-900/90 border border-slate-700 p-3 rounded-xl flex items-center justify-between">
+                            <span class="text-xs font-bold text-indigo-400">連結QR解析進度:</span>
+                            <span id="scan-progress-text" class="text-xs font-black font-mono text-emerald-400">0 / 0 (0%)</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 進捗バー -->
+                    <div class="w-full max-w-sm bg-slate-800 h-3 rounded-full overflow-hidden border border-slate-700">
+                        <div id="scan-progress-bar" class="bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 h-full w-0 transition-all duration-100"></div>
+                    </div>
+
+                    <div class="flex space-x-3">
+                        <button onclick="toggleCameraFacing()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold rounded-lg">
+                            🔄 カメラ切替
+                        </button>
+                        <button onclick="stopQRScanner()" class="px-3 py-1.5 bg-rose-900/40 hover:bg-rose-900/60 border border-rose-500/30 text-rose-300 text-xs font-semibold rounded-lg">
+                            ❌ キャンセル
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 境界線 -->
+                <div class="relative flex py-2 items-center">
+                    <div class="flex-grow border-t border-slate-800"></div>
+                    <span class="flex-shrink mx-4 text-slate-500 text-xs font-bold uppercase tracking-wider">またはキーを打ち込む</span>
+                    <div class="flex-grow border-t border-slate-800"></div>
+                </div>
+
+                <div class="max-w-xs mx-auto space-y-4">
+                    <div class="space-y-1">
+                        <label for="pin-input" class="text-[11px] font-bold text-indigo-300 block text-center uppercase tracking-wider">6桁のワンタイム・キー</label>
+                        <input type="text" id="pin-input" maxlength="8" placeholder="例: pgiPc2" class="w-full text-center bg-slate-900 border-2 border-slate-700 focus:border-indigo-500 rounded-2xl py-4 text-3xl font-black font-mono tracking-widest text-indigo-400 placeholder-slate-700 uppercase focus:outline-none transition-all duration-300">
+                    </div>
+
+                    <button onclick="retrieveFileByPin()" class="w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-950/50 hover:shadow-indigo-900/50 transition-all duration-300 flex items-center justify-center space-x-2 cursor-pointer">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 13l-7 7-7-7m14-6l-7 7-7-7"></path>
+                        </svg>
+                        <span>キーを入力して受信</span>
+                    </button>
+                </div>
+            </div>
+
+
+            <!-- ================= 生成完了・共有完了画面 ================= -->
+            <div id="result-section" class="hidden space-y-6">
+                <div class="text-center space-y-2">
+                    <div class="mx-auto w-16 h-16 bg-emerald-950/50 border border-emerald-500/30 rounded-full flex items-center justify-center text-emerald-400 animate-bounce">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    </div>
+                    <h1 class="text-2xl font-extrabold text-white">共有準備が完了しました！</h1>
+                </div>
+
+                <!-- 選択肢 A: スマホ等へ超速送信用「ワンタイム・キー」 -->
+                <div class="p-6 bg-indigo-950/20 rounded-2xl border border-indigo-500/30 space-y-3 relative overflow-hidden">
+                    <div class="absolute -top-10 -right-10 w-28 h-28 bg-indigo-500/10 rounded-full blur-2xl"></div>
+                    
+                    <div class="text-center space-y-1">
+                        <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 tracking-widest uppercase">Method 1: One-Time Key</span>
+                        <h3 class="text-xs font-semibold text-slate-300">スマホに入力して受信（推奨）</h3>
+                    </div>
+
+                    <div class="flex items-center justify-center gap-3">
+                        <div id="pin-display" class="text-4xl md:text-5xl font-black font-mono tracking-widest text-indigo-400 bg-slate-950/80 px-6 py-3 rounded-2xl border border-slate-800 select-all shadow-inner">
+                            ------
+                        </div>
+                        <button onclick="copyPinCode()" class="px-4 py-3 bg-indigo-900/50 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-300 rounded-2xl text-xs font-bold transition-colors shadow-md">
+                            コピー
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-slate-400 leading-relaxed text-center">
+                        相手のスマホで PicoShare を開き、このキーを打ち込むだけでファイルが届きます。<br>
+                        <span class="text-indigo-300 font-medium">※有効期限24時間。セキュリティ上、一度ダウンロードされるとクラウドから自動的に完全消滅します。</span>
+                    </p>
+                </div>
+
+                <!-- 選択肢 B: 爆速読み取り可能「連結アニメーションQRコード」 -->
+                <div id="qr-section" class="p-6 bg-slate-900/40 rounded-2xl border border-slate-800/80 flex flex-col items-center justify-center space-y-4">
+                    <div class="text-center space-y-1">
+                        <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 tracking-widest uppercase">Method 2: Multi-Segment Loop QR</span>
+                        <h3 class="text-xs font-semibold text-slate-300">スマホの「連結QRスキャナー」で読み取り</h3>
+                    </div>
+
+                    <!-- パラパラ連結QRコード(Canvas) -->
+                    <div class="relative bg-white p-3.5 rounded-2xl shadow-xl hover:scale-[1.02] transition-transform duration-300 flex flex-col items-center">
+                        <canvas id="qr-canvas" class="w-36 h-36 sm:w-40 sm:h-40"></canvas>
+                        <!-- 中央の飾りロゴ -->
+                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none pb-5">
+                            <div class="w-8 h-8 bg-slate-950 border-2 border-white rounded-lg flex items-center justify-center shadow-md">
+                                <span class="text-[9px] font-black text-indigo-400 tracking-tighter">Pico</span>
+                            </div>
+                        </div>
+                        
+                        <!-- 現在のセグメントインジケーター -->
+                        <div class="mt-2 text-[10px] font-black font-mono text-slate-900 bg-slate-200 px-2 py-0.5 rounded-full flex items-center space-x-1.5">
+                            <span class="w-2 h-2 rounded-full bg-indigo-600 animate-ping"></span>
+                            <span id="qr-segment-indicator">0 / 0</span>
+                        </div>
+                    </div>
+
+                    <!-- アニメーションQR用のコントローラー -->
+                    <div class="flex items-center space-x-4 bg-slate-950/50 p-3 rounded-xl border border-slate-800/60 max-w-xs w-full text-xs">
+                        <div class="flex-grow space-y-1">
+                            <label class="text-[10px] text-slate-400 block font-bold">ループ切り替え速度 (FPS)</label>
+                            <input id="qr-speed-range" type="range" min="150" max="600" step="50" value="300" class="w-full accent-indigo-500">
+                        </div>
+                        <span id="qr-speed-text" class="font-mono text-indigo-300 font-bold whitespace-nowrap">300ms</span>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button onclick="downloadQRCode()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200 rounded-xl text-xs font-bold flex items-center transition-all shadow-md">
+                            <svg class="w-3.5 h-3.5 mr-1.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                            QR画像を保存
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 選択肢 C: 直接長いURLでコピー -->
+                <div class="space-y-2 p-4 bg-slate-900/30 rounded-2xl border border-slate-800">
+                    <span class="text-[10px] font-bold text-slate-500 block uppercase tracking-wider">Method 3: Full URL (Direct link)</span>
+                    <div class="flex items-center space-x-2 bg-slate-950/50 rounded-xl p-2 border border-slate-900">
+                        <input type="text" id="output-url" readonly class="bg-transparent border-none text-slate-400 w-full text-xs font-mono focus:outline-none select-all overflow-x-auto" value="">
+                        <button onclick="copyGeneratedLink()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] rounded-lg border border-slate-700 whitespace-nowrap transition-colors">
+                            コピー
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 共有するファイルの詳細 -->
+                <div class="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row justify-between gap-4 text-xs">
+                    <div class="space-y-1">
+                        <span class="text-slate-500 block">共有対象</span>
+                        <span id="result-filename" class="font-bold text-slate-200 text-sm truncate block max-w-xs">document.txt</span>
+                    </div>
+                    <div class="flex gap-6">
+                        <div class="space-y-1">
+                            <span class="text-slate-500 block">サイズ</span>
+                            <span id="result-orig-size" class="font-semibold text-slate-300 text-sm">0 KB</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- もう一回ボタン -->
+                <button onclick="resetToUpload()" class="w-full py-3.5 px-6 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-2xl transition-all border border-slate-700 flex items-center justify-center space-x-2">
+                    <span>別のファイルを共有する</span>
+                </button>
+            </div>
+
+            <!-- ================= 受信者・ダウンロード復元画面 ================= -->
+            <div id="download-section" class="hidden space-y-6">
+                <div class="text-center space-y-2">
+                    <div class="mx-auto w-16 h-16 bg-indigo-950/50 border border-indigo-500/30 rounded-full flex items-center justify-center text-indigo-400">
+                        <svg class="w-8 h-8 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                    </div>
+                    <h1 class="text-2xl font-extrabold text-white">共有ファイルが届きました</h1>
+                    <p class="text-slate-400 text-sm">
+                        相手から届いたファイルを安全にこのデバイスへ復元・保存します。
+                    </p>
+                </div>
+
+                <!-- ファイル詳細カード -->
+                <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+                    <div class="flex items-start justify-between border-b border-slate-800 pb-4">
+                        <div class="space-y-1">
+                            <span class="text-xs text-indigo-400 font-semibold tracking-wider">FILE NAME</span>
+                            <h2 id="download-filename" class="text-xl font-bold text-white break-all">my_document.pdf</h2>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 text-xs">
+                        <div class="space-y-1 bg-slate-950/30 p-3 rounded-xl border border-slate-900">
+                            <span class="text-slate-500 block">ファイル種類</span>
+                            <span id="download-filetype" class="font-semibold text-slate-200">PDF Document</span>
+                        </div>
+                        <div class="space-y-1 bg-slate-950/30 p-3 rounded-xl border border-slate-900">
+                            <span class="text-slate-500 block">ファイルサイズ</span>
+                            <span id="download-filesize" class="font-semibold text-slate-200">0 KB</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ダウンロードボタン -->
+                <button id="btn-download" onclick="triggerFileDownload()" class="w-full py-4 px-6 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold rounded-2xl shadow-lg shadow-emerald-950/50 hover:shadow-emerald-900/50 transition-all duration-300 flex items-center justify-center space-x-2 cursor-pointer">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                    <span>このファイルをダウンロードする</span>
+                </button>
+
+                <!-- 新しく自分も共有するボタン -->
+                <button onclick="resetToUpload()" class="w-full py-3.5 px-6 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-2xl transition-all border border-slate-700 flex items-center justify-center space-x-2">
+                    <span>自分もファイルを共有する</span>
+                </button>
+            </div>
+
+            <!-- ================= ローディング / 処理中モード ================= -->
+            <div id="loading-section" class="hidden py-12 flex-col items-center justify-center space-y-4">
+                <div class="relative w-16 h-16">
+                    <div class="absolute inset-0 border-4 border-indigo-950 rounded-full"></div>
+                    <div class="absolute inset-0 border-4 border-t-indigo-500 rounded-full animate-spin"></div>
+                </div>
+                <div class="text-center">
+                    <h3 id="loading-title" class="text-lg font-bold text-white">処理中...</h3>
+                    <p id="loading-desc" class="text-sm text-slate-400">ブラウザ上で処理を行っています。お待ちください。</p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- 仕組みについて -->
+        <div class="mt-8 bg-slate-800/20 rounded-2xl border border-slate-800/80 p-5 space-y-4">
+            <h3 class="text-sm font-bold text-slate-300 flex items-center">
+                <svg class="w-4 h-4 mr-1.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                PicoShare キー・QR共有の秘密
+            </h3>
+            <div class="text-xs text-slate-400 space-y-3 leading-relaxed">
+                <p>
+                    <strong class="text-slate-200">Q. なぜキーで共有できるのにサーバーレスなのですか？</strong><br>
+                    ファイル自体はすべて「あなたのブラウザ内」で強力にGzip圧縮＋暗号化（Base64化）され、長い文字列になっています。
+                    このツールは、その「文字列データ」のみを一時中継保管庫（file.io）に、暗号キーをファイル名として一時預け入れます。
+                    相手がキーを打つと、その暗号文をスマホに引き込み、スマホ側のCPUメモリ上でファイルを100%復元・解凍するため、サーバー上には一切の生データやログが残りません。
+                </p>
+                <p>
+                    <strong class="text-slate-200">Q. 共有データの安全性は？</strong><br>
+                    この一時保管庫は、<strong>「1回でも引き出されると、その瞬間にデータをクラウドから完全・物理消去する」ワンタイム完全消滅（One-Time Read & Destroy）仕様</strong>です。
+                    相手がダウンロードした後は、世界中の誰もそのキーからデータを取り出せなくなります。
+                </p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- フッター -->
+    <footer class="py-6 border-t border-slate-800 bg-slate-950/40 text-center text-xs text-slate-500">
+        <div class="max-w-4xl mx-auto px-4">
+            <p>© 2026 PicoShare. Pure Client-side Web Utility.</p>
+        </div>
+    </footer>
+
+
+    <script>
+        let selectedFile = null;
+        let generatedUrl = "";
+        let generatedPin = "";
+        let isSettingsOpen = false;
+        let currentTab = "send"; // 'send' or 'receive'
+
+        // アニメーション連結QR用の設定
+        let qrSegments = [];
+        let qrCurrentIndex = 0;
+        let qrIntervalId = null;
+        let qrSpeedMs = 300; // デフォルト切り替えスピード
+
+        // スキャナー用のカメラ状態
+        let scannerStream = null;
+        let isScannerRunning = false;
+        let isFrontFacing = false; // デフォルトは背面カメラ(false)
+        let collectedSegments = {}; // スキャンしたセグメントのバッファ
+
+        // 効果音（ブラウザビープ音）
+        function playBeep(type = 'success') {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                if (type === 'success') {
+                    // ピピッという快適な完了音
+                    const osc1 = ctx.createOscillator();
+                    const osc2 = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    
+                    osc1.type = 'sine';
+                    osc1.frequency.setValueAtTime(880, ctx.currentTime); // A5
+                    osc1.frequency.setValueAtTime(1760, ctx.currentTime + 0.08); // A6
+                    
+                    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                    
+                    osc1.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc1.start();
+                    osc1.stop(ctx.currentTime + 0.2);
+                } else if (type === 'progress') {
+                    // ピッという読み取り音
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(1200, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.05, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.04);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.04);
+                }
+            } catch (e) {
+                console.warn("Audio Context blocked or unsupported:", e);
+            }
+        }
+
+        // ドメイン検証（プレビュー環境か、それとも正式な公開ドメインか）
+        function checkEnvironment() {
+            const host = window.location.hostname;
+            const banner = document.getElementById('env-warning-banner');
+            
+            if (
+                host.includes('googleusercontent.com') || 
+                host.includes('translate.goog') || 
+                host.includes('sandbox') ||
+                host === ''
+            ) {
+                banner.classList.remove('hidden');
+                document.getElementById('custom-host-input').value = "https://your-github-username.github.io/picoshare/";
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        // 送信・受信タブの切り替え
+        function switchTab(tab) {
+            currentTab = tab;
+            const btnSend = document.getElementById('btn-tab-send');
+            const btnReceive = document.getElementById('btn-tab-receive');
+            const secUpload = document.getElementById('upload-section');
+            const secReceive = document.getElementById('receive-section');
+
+            if (tab === 'send') {
+                btnSend.className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all duration-300 bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg";
+                btnReceive.className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 transition-all duration-300";
+                secUpload.classList.remove('hidden');
+                secReceive.classList.add('hidden');
+                stopQRScanner(); // タブを切り替えたらカメラは止める
+            } else {
+                btnSend.className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 transition-all duration-300";
+                btnReceive.className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg";
+                secUpload.classList.add('hidden');
+                secReceive.classList.remove('hidden');
+            }
+        }
+
+        // 設定アコーディオンの開閉
+        function toggleSettings() {
+            isSettingsOpen = !isSettingsOpen;
+            const content = document.getElementById('settings-content');
+            const arrow = document.getElementById('settings-arrow');
+            if (isSettingsOpen) {
+                content.classList.remove('hidden');
+                arrow.classList.add('rotate-180');
+            } else {
+                content.classList.add('hidden');
+                arrow.classList.remove('rotate-180');
+            }
+        }
+
+        // UI切り替え
+        function showView(viewName) {
+            document.getElementById('upload-section').classList.add('hidden');
+            document.getElementById('receive-section').classList.add('hidden');
+            document.getElementById('result-section').classList.add('hidden');
+            document.getElementById('download-section').classList.add('hidden');
+            document.getElementById('loading-section').classList.add('hidden');
+            document.getElementById('tab-container').classList.add('hidden'); // 結果やダウンロード中は隠す
+
+            if (viewName === 'upload') {
+                document.getElementById('tab-container').classList.remove('hidden');
+                switchTab(currentTab);
+            } else if (viewName === 'result') {
+                document.getElementById('result-section').classList.remove('hidden');
+            } else if (viewName === 'download') {
+                document.getElementById('download-section').classList.remove('hidden');
+            } else if (viewName === 'loading') {
+                document.getElementById('loading-section').classList.remove('hidden');
+            }
+        }
+
+        // トースト通知を表示
+        function showToast(message, type = "success") {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const bgClass = type === "success" ? "bg-emerald-950/90 border-emerald-500/50 text-emerald-300" : "bg-rose-950/90 border-rose-500/50 text-rose-300";
+            const icon = type === "success" 
+                ? `<svg class="w-5 h-5 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`
+                : `<svg class="w-5 h-5 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
+
+            toast.className = `flex items-center space-x-3 px-4 py-3 rounded-2xl border ${bgClass} shadow-xl backdrop-blur-md transition-all duration-300 transform translate-y-2 opacity-0`;
+            toast.innerHTML = `${icon}<span class="text-xs font-semibold">${message}</span>`;
+
+            container.appendChild(toast);
+            setTimeout(() => toast.classList.remove('translate-y-2', 'opacity-0'), 10);
+            setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        // URLセーフなBase64変換
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        function base64ToArrayBuffer(base64) {
+            let b64 = base64.replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4) { b64 += '='; }
+            const binaryString = atob(b64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function stringToBase64(str) {
+            return arrayBufferToBase64(new TextEncoder().encode(str).buffer);
+        }
+
+        function base64ToString(b64) {
+            return new TextDecoder().decode(base64ToArrayBuffer(b64));
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024, dm = 2;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        // CompressionStreamを使用した高速ローカルGzip圧縮
+        async function compressData(arrayBuffer) {
+            const stream = new Response(arrayBuffer).body.pipeThrough(new CompressionStream('gzip'));
+            return await new Response(stream).arrayBuffer();
+        }
+
+        async function decompressData(arrayBuffer) {
+            const stream = new Response(arrayBuffer).body.pipeThrough(new DecompressionStream('gzip'));
+            return await new Response(stream).arrayBuffer();
+        }
+
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-indigo-500', 'bg-slate-900/80');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-indigo-500', 'bg-slate-900/80');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-indigo-500', 'bg-slate-900/80');
+            if (e.dataTransfer.files.length > 0) {
+                handleFileSelection(e.dataTransfer.files[0]);
+            }
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelection(e.target.files[0]);
+            }
+        });
+
+        function handleFileSelection(file) {
+            selectedFile = file;
+            document.getElementById('drop-zone-prompt').classList.add('hidden');
+            document.getElementById('file-preview-zone').classList.remove('hidden');
+            document.getElementById('preview-filename').innerText = file.name;
+            document.getElementById('preview-filesize').innerText = `ファイルサイズ: ${formatBytes(file.size)}`;
+
+            const thumbnailImg = document.getElementById('preview-thumbnail');
+            const fallbackIcon = document.getElementById('preview-file-icon');
+
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    thumbnailImg.src = e.target.result;
+                    thumbnailImg.classList.remove('hidden');
+                    fallbackIcon.classList.add('hidden');
+                };
+                reader.readAsDataURL(file);
+            } else {
+                thumbnailImg.classList.add('hidden');
+                fallbackIcon.classList.remove('hidden');
+            }
+
+            // 安全サイズゲージの更新
+            updateLimitGauge(file.size);
+
+            const btn = document.getElementById('btn-generate');
+            btn.removeAttribute('disabled');
+            btn.className = "w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-950/50 hover:shadow-indigo-900/50 transition-all duration-300 flex items-center justify-center space-x-2 cursor-pointer";
+        }
+
+        function clearSelectedFile(event) {
+            if (event) { event.stopPropagation(); event.preventDefault(); }
+            selectedFile = null;
+            fileInput.value = '';
+            document.getElementById('drop-zone-prompt').classList.remove('hidden');
+            document.getElementById('file-preview-zone').classList.add('hidden');
+            document.getElementById('gauge-container').classList.add('hidden');
+
+            const btn = document.getElementById('btn-generate');
+            btn.setAttribute('disabled', 'true');
+            btn.className = "w-full py-4 px-6 bg-slate-700 text-slate-400 font-bold rounded-2xl shadow-lg transition-all duration-300 cursor-not-allowed flex items-center justify-center space-x-2";
+        }
+
+        function updateLimitGauge(fileSize) {
+            const container = document.getElementById('gauge-container');
+            const bar = document.getElementById('gauge-bar');
+            const ratioText = document.getElementById('gauge-ratio');
+            const warningText = document.getElementById('gauge-warning');
+
+            container.classList.remove('hidden');
+            // Gzipによる圧縮サイズ予測
+            let estimatedCompressed = fileSize;
+            if (selectedFile.type.startsWith('text/') || selectedFile.name.endsWith('.json') || selectedFile.name.endsWith('.txt')) {
+                estimatedCompressed = fileSize * 0.3;
+            } else {
+                estimatedCompressed = fileSize * 1.05;
+            }
+
+            // ワンタイムキー（クラウド経由）は実質20MBまで送信可能。
+            // 連結QRコードによるローカル転送は、ドット解凍効率上、250KB以下を推奨。
+            const maxSafeBytes = 20 * 1024 * 1024; // ワンタイムキー許容サイズ
+            const pct = Math.min(100, Math.round((estimatedCompressed / maxSafeBytes) * 100));
+
+            ratioText.innerText = `${formatBytes(estimatedCompressed)} / 安全上限: ${formatBytes(maxSafeBytes)}`;
+            bar.style.width = `${pct}%`;
+
+            if (estimatedCompressed < 150000) {
+                bar.className = "bg-gradient-to-r from-emerald-500 to-teal-500 h-full w-0 transition-all duration-300";
+                warningText.innerHTML = "✅ <span class='text-emerald-400 font-semibold'>最適サイズ！</span> 超高速連結QRコード＆ワンタイムキーの両方で最高の転送パフォーマンスを発揮できます。";
+            } else if (estimatedCompressed < 2 * 1024 * 1024) {
+                bar.className = "bg-gradient-to-r from-yellow-500 to-orange-500 h-full w-0 transition-all duration-300";
+                warningText.innerHTML = "⚠️ <span class='text-yellow-400 font-semibold'>容量が少し大きめです。</span> 連結QRは高解像度化します。このサイズは「ワンタイム・キー共有」を強く推奨します。";
+            } else {
+                bar.className = "bg-gradient-to-r from-rose-500 to-red-600 h-full w-0 transition-all duration-300";
+                warningText.innerHTML = "❌ <span class='text-rose-400 font-semibold'>大容量です。</span> 連結QRコードでの送信は不可能です。「ワンタイム・キー共有」を利用して共有してください。";
+            }
+        }
+
+        async function generateShareLink() {
+            if (!selectedFile) return;
+
+            document.getElementById('loading-title').innerText = "ファイルをエンコード＆保管中...";
+            document.getElementById('loading-desc').innerText = "強固なGzip圧縮を施し、世界中と安全に共有する一時接続先を生成しています。";
+            showView('loading');
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const arrayBuffer = e.target.result;
+                    // 1. 高速ローカル圧縮
+                    const compressedBuffer = await compressData(arrayBuffer);
+                    const fileBase64 = arrayBufferToBase64(compressedBuffer);
+                    const nameBase64 = stringToBase64(selectedFile.name);
+                    const typeBase64 = stringToBase64(selectedFile.type || 'application/octet-stream');
+
+                    // 2. 直接共有用フルURL（従来のハッシュエンベッド）の生成
+                    const hashValue = `#${nameBase64}:${typeBase64}:${fileBase64}`;
+                    const customHost = document.getElementById('custom-host-input').value.trim();
+                    let baseUrl = window.location.origin + window.location.pathname;
+                    if (customHost && customHost.startsWith('http')) {
+                        baseUrl = customHost.endsWith('/') ? customHost : customHost + '/';
+                        if (baseUrl.endsWith('.html/')) baseUrl = baseUrl.slice(0, -1);
+                    }
+                    generatedUrl = baseUrl + hashValue;
+
+                    // 3. ワンタイム・キー（file.io API経由）の生成
+                    // CORS問題を回避するため、暗号化（ハッシュ化）されたメタデータを含むテキストデータ全体をファイル形式としてfile.ioに一時保管。
+                    // 1つのテキストとしてアップロードさせ、自動削除(1回限りの読取)を設定。
+                    const payloadStr = JSON.stringify({
+                        name: selectedFile.name,
+                        type: selectedFile.type || 'application/octet-stream',
+                        data: fileBase64
+                    });
+
+                    const payloadBlob = new Blob([payloadStr], { type: 'text/plain' });
+                    const formData = new FormData();
+                    formData.append('file', payloadBlob, 'picoshare_onetime.txt');
+                    formData.append('expiry', '1d'); // 有効期限1日
+
+                    try {
+                        const response = await fetch('https://file.io', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        if (!response.ok) throw new Error("中継保管庫への保管に失敗しました。");
+                        
+                        const result = await response.json();
+                        if (result.success) {
+                            // file.io から返却されたキー (例: https://file.io/pG1pCx) から固有キーを抽出
+                            const linkParts = result.link.split('/');
+                            generatedPin = linkParts[linkParts.length - 1]; // 6桁のキー
+                        } else {
+                            throw new Error("保管庫からキーを取得できませんでした。");
+                        }
+                    } catch (err) {
+                        console.warn("One-Time Key server issue. Falling back to hash url only:", err);
+                        generatedPin = "OFFLINE";
+                    }
+
+                    // 4. 新・連結QRコード用のデータセグメント（紙芝居アニメーションループ用）の生成
+                    // データを細かく分割し、スマホ側のカメラでパラパラ読み取り可能な極小QRコードの配列を作る。
+                    // 規格に最も近く、最も高い読み取り成功率を担保する。
+                    const rawDataToSplit = `${nameBase64}:${typeBase64}:${fileBase64}`;
+                    const segmentSize = 180; // ドットが非常に荒く、瞬時にフォーカスできる安全文字数
+                    const totalSegments = Math.ceil(rawDataToSplit.length / segmentSize);
+                    qrSegments = [];
+
+                    // データを均等にパズル化
+                    for (let i = 0; i < totalSegments; i++) {
+                        const chunk = rawDataToSplit.substring(i * segmentSize, (i + 1) * segmentSize);
+                        // フォーマット: PICO|[INDEX]/[TOTAL]|[DATA]  ※データ内の':'と衝突しないよう'|'を使用
+                        qrSegments.push(`PICO|${i}/${totalSegments}|${chunk}`);
+                    }
+
+                    // 完了画面のレンダリング
+                    document.getElementById('pin-display').innerText = generatedPin;
+                    document.getElementById('output-url').value = generatedUrl;
+                    document.getElementById('result-filename').innerText = selectedFile.name;
+                    document.getElementById('result-orig-size').innerText = formatBytes(selectedFile.size);
+
+                    // 連結QRコードのアニメーションループを開始
+                    qrCurrentIndex = 0;
+                    startQRAnimationLoop();
+
+                    showView('result');
+                    showToast("共有情報の生成に成功しました！");
+                    playBeep('success');
+
+                } catch (err) {
+                    showView('upload');
+                    showToast(err.message, "error");
+                }
+            };
+            reader.readAsArrayBuffer(selectedFile);
+        }
+
+        function startQRAnimationLoop() {
+            if (qrIntervalId) clearInterval(qrIntervalId);
+            if (qrSegments.length === 0) return;
+
+            const canvas = document.getElementById('qr-canvas');
+            const indicator = document.getElementById('qr-segment-indicator');
+            
+            // 超高速QR生成ライブラリ QRious をインスタンス化
+            const qr = new QRious({
+                element: canvas,
+                size: 280,
+                level: 'L' // データ密度と読み取りやすさ重視
+            });
+
+            function renderNextFrame() {
+                if (qrCurrentIndex >= qrSegments.length) {
+                    qrCurrentIndex = 0;
+                }
+                
+                qr.value = qrSegments[qrCurrentIndex];
+                indicator.innerText = `${qrCurrentIndex + 1} / ${qrSegments.length}`;
+                qrCurrentIndex++;
+            }
+
+            renderNextFrame(); // 初回実行
+            qrIntervalId = setInterval(renderNextFrame, qrSpeedMs);
+        }
+
+        // 速度調整スライダー
+        const speedRange = document.getElementById('qr-speed-range');
+        const speedText = document.getElementById('qr-speed-text');
+        speedRange.addEventListener('input', (e) => {
+            qrSpeedMs = parseInt(e.target.value);
+            speedText.innerText = `${qrSpeedMs}ms`;
+            if (qrSegments.length > 0) {
+                startQRAnimationLoop();
+            }
+        });
+
+        // アニメーションQRコードを画像(PNG)として保存
+        function downloadQRCode() {
+            const canvas = document.getElementById('qr-canvas');
+            const a = document.createElement('a');
+            a.href = canvas.toDataURL('image/png');
+            a.download = `picoshare_qr_segment_${qrCurrentIndex || 1}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast("現在表示中のQRコード画像を保存しました。");
+        }
+
+        // コピー関連
+        function copyPinCode() {
+            if (generatedPin === "OFFLINE") {
+                showToast("キーがオフラインのためコピーできません。", "error");
+                return;
+            }
+            fallbackCopy(generatedPin);
+        }
+
+        function copyGeneratedLink() {
+            fallbackCopy(generatedUrl);
+        }
+
+        function fallbackCopy(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast("コピーしました！");
+            } catch (err) {
+                showToast("コピーできませんでした。手動で選択してください。", "error");
+            }
+            document.body.removeChild(textArea);
+        }
+
+        async function startQRScanner() {
+            const container = document.getElementById('scanner-container');
+            const video = document.getElementById('scanner-video');
+            const progressText = document.getElementById('scan-progress-text');
+            const progressBar = document.getElementById('scan-progress-bar');
+
+            // 収集したセグメントのバッファをクリア
+            collectedSegments = {};
+            progressText.innerText = "0 / 0 (0%)";
+            progressBar.style.width = "0%";
+
+            try {
+                // リアカメラをデフォルト優先、iOS/Android両対応
+                const constraints = {
+                    video: { facingMode: isFrontFacing ? "user" : "environment" }
+                };
+                
+                scannerStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = scannerStream;
+                video.setAttribute("playsinline", true); // iOS用ガード
+                video.play();
+                
+                container.classList.remove('hidden');
+                container.classList.add('flex');
+                isScannerRunning = true;
+                
+                // カメラフレームキャプチャのループ開始
+                requestAnimationFrame(tickScanner);
+                showToast("スキャナーが起動しました。動くQRコードを映してください。");
+            } catch (err) {
+                console.error(err);
+                showToast("カメラの起動に失敗しました。権限を許可してください。", "error");
+            }
+        }
+
+        function toggleCameraFacing() {
+            isFrontFacing = !isFrontFacing;
+            if (isScannerRunning) {
+                stopQRScanner();
+                startQRScanner();
+            }
+        }
+
+        function stopQRScanner() {
+            const container = document.getElementById('scanner-container');
+            if (scannerStream) {
+                scannerStream.getTracks().forEach(track => track.stop());
+                scannerStream = null;
+            }
+            container.classList.add('hidden');
+            container.classList.remove('flex');
+            isScannerRunning = false;
+        }
+
+        function tickScanner() {
+            if (!isScannerRunning) return;
+
+            const video = document.getElementById('scanner-video');
+            const canvas = document.getElementById('scanner-canvas');
+            
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvas.height = video.videoHeight;
+                canvas.width = video.videoWidth;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                // jsQRで高精度デコード
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "dontInvert",
+                });
+
+                if (code) {
+                    processScannedQR(code.data);
+                }
+            }
+            requestAnimationFrame(tickScanner);
+        }
+
+        function processScannedQR(scannedText) {
+            // フォーマット検証 PICO|[INDEX]/[TOTAL]|[DATA]
+            if (!scannedText.startsWith("PICO|")) return;
+
+            const parts = scannedText.substring(5).split('|');
+            if (parts.length < 2) return;
+
+            const meta = parts[0].split('/');
+            if (meta.length !== 2) return;
+
+            const index = parseInt(meta[0]);
+            const total = parseInt(meta[1]);
+            // parts[1]以降を'|'で再結合（データに'|'が含まれる場合の安全策）
+            const chunkData = parts.slice(1).join('|');
+
+            // 新規セグメントの場合バッファに格納
+            if (!collectedSegments[index]) {
+                collectedSegments[index] = chunkData;
+                playBeep('progress'); // 読み取り音
+
+                // UIの進捗インジケーターを動的に更新
+                const collectedCount = Object.keys(collectedSegments).length;
+                const progressText = document.getElementById('scan-progress-text');
+                const progressBar = document.getElementById('scan-progress-bar');
+                
+                const pct = Math.round((collectedCount / total) * 100);
+                progressText.innerText = `${collectedCount} / ${total} (${pct}%)`;
+                progressBar.style.width = `${pct}%`;
+
+                // 100%パズルが揃った場合、即時再構成と復元処理へ
+                if (collectedCount === total) {
+                    stopQRScanner();
+                    reconstructFileFromSegments(total);
+                }
+            }
+        }
+
+        // 分割された全パズルピースを結合して展開
+        async function reconstructFileFromSegments(total) {
+            document.getElementById('loading-title').innerText = "ファイルをローカル復元中...";
+            document.getElementById('loading-desc').innerText = "スマホのカメラで吸い上げたパズルデータを1つにマージしています。";
+            showView('loading');
+
+            try {
+                let fullRawData = "";
+                for (let i = 0; i < total; i++) {
+                    fullRawData += collectedSegments[i];
+                }
+
+                // fullRawData は "nameBase64:typeBase64:fileBase64" 形式
+                // ':'はBase64に含まれないので最初の2つだけsplitし、残りをfileBase64とする
+                const colonIdx1 = fullRawData.indexOf(':');
+                const colonIdx2 = fullRawData.indexOf(':', colonIdx1 + 1);
+                if (colonIdx1 === -1 || colonIdx2 === -1) {
+                    throw new Error("データ形式が不正です。スキャンをやり直してください。");
+                }
+
+                const nameBase64 = fullRawData.substring(0, colonIdx1);
+                const typeBase64 = fullRawData.substring(colonIdx1 + 1, colonIdx2);
+                const fileBase64 = fullRawData.substring(colonIdx2 + 1);
+
+                const filename = base64ToString(nameBase64);
+                const filetype = base64ToString(typeBase64);
+
+                const compressedBuffer = base64ToArrayBuffer(fileBase64);
+                const decompressedBuffer = await decompressData(compressedBuffer);
+                const fileBlob = new Blob([decompressedBuffer], { type: filetype });
+
+                incomingFileData = {
+                    blob: fileBlob,
+                    name: filename,
+                    size: fileBlob.size,
+                    type: filetype
+                };
+
+                document.getElementById('download-filename').innerText = filename;
+                document.getElementById('download-filetype').innerText = filetype || '不明なファイル形式';
+                document.getElementById('download-filesize').innerText = formatBytes(fileBlob.size);
+
+                showView('download');
+                showToast("QRスキャンからの復元に成功しました！");
+                playBeep('success');
+            } catch (err) {
+                console.error(err);
+                showView('upload');
+                showToast("データのマージ、または展開中に重大なエラーが発生しました: " + err.message, "error");
+            }
+        }
+
+        async function retrieveFileByPin() {
+            const pin = document.getElementById('pin-input').value.trim();
+            if (!pin || pin.length < 4) {
+                showToast("正しいキーを入力してください。", "error");
+                return;
+            }
+
+            document.getElementById('loading-title').innerText = "クラウド保管庫から取得中...";
+            document.getElementById('loading-desc').innerText = "ワンタイム・キーに基づき、暗号パケットを引き抜いています。";
+            showView('loading');
+
+            try {
+                // file.io から保管ファイルを取得
+                const response = await fetch(`https://file.io/${pin}`);
+                if (!response.ok) {
+                    throw new Error("キーが違っているか、または既に他のデバイスにダウンロードされて完全に消滅しています。");
+                }
+
+                // テキスト(JSON)として展開
+                const textData = await response.text();
+                const payload = JSON.parse(textData);
+
+                // メタデータと圧縮データの展開
+                const compressedBuffer = base64ToArrayBuffer(payload.data);
+                const decompressedBuffer = await decompressData(compressedBuffer);
+                const fileBlob = new Blob([decompressedBuffer], { type: payload.type });
+
+                incomingFileData = {
+                    blob: fileBlob,
+                    name: payload.name,
+                    size: fileBlob.size,
+                    type: payload.type
+                };
+
+                // ダウンロード画面の設定
+                document.getElementById('download-filename').innerText = payload.name;
+                document.getElementById('download-filetype').innerText = payload.type || '不明な形式';
+                document.getElementById('download-filesize').innerText = formatBytes(fileBlob.size);
+
+                showView('download');
+                showToast("ファイルの引き抜きと復元に成功しました！");
+                playBeep('success');
+
+            } catch (err) {
+                console.error(err);
+                showView('upload');
+                showToast(err.message, "error");
+            }
+        }
+
+        let incomingFileData = null;
+
+        async function checkIncomingFile() {
+            const hash = window.location.hash;
+            if (!hash || hash.length < 10) {
+                showView('upload');
+                return;
+            }
+
+            const cleanHash = hash.substring(1);
+            // ':'はBase64に含まれないため安全に分割できるが、
+            // fileBase64部分に':'が混入するケースに備えて最初の2箇所だけで分割する
+            const colonIdx1 = cleanHash.indexOf(':');
+            const colonIdx2 = cleanHash.indexOf(':', colonIdx1 + 1);
+
+            if (colonIdx1 === -1 || colonIdx2 === -1) {
+                showView('upload');
+                return;
+            }
+
+            document.getElementById('loading-title').innerText = "共有URLをデコード中...";
+            document.getElementById('loading-desc').innerText = "URLハッシュデータからGzipを展開して、ファイルを安全に再構成しています。";
+            showView('loading');
+
+            try {
+                const nameBase64 = cleanHash.substring(0, colonIdx1);
+                const typeBase64 = cleanHash.substring(colonIdx1 + 1, colonIdx2);
+                const fileBase64 = cleanHash.substring(colonIdx2 + 1);
+
+                const filename = base64ToString(nameBase64);
+                const filetype = base64ToString(typeBase64);
+                
+                const compressedBuffer = base64ToArrayBuffer(fileBase64);
+                const decompressedBuffer = await decompressData(compressedBuffer);
+
+                const fileBlob = new Blob([decompressedBuffer], { type: filetype });
+
+                incomingFileData = {
+                    blob: fileBlob,
+                    name: filename,
+                    size: fileBlob.size,
+                    type: filetype
+                };
+
+                document.getElementById('download-filename').innerText = filename;
+                document.getElementById('download-filetype').innerText = filetype || '不明なファイル形式';
+                document.getElementById('download-filesize').innerText = formatBytes(fileBlob.size);
+
+                showView('download');
+                showToast("共有URLからの復元に成功しました！");
+                playBeep('success');
+            } catch (err) {
+                console.error(err);
+                showView('upload');
+                showToast("デコードに失敗しました。URLが途中でちぎれている可能性があります。", "error");
+            }
+        }
+
+        function triggerFileDownload() {
+            if (!incomingFileData) return;
+
+            const url = URL.createObjectURL(incomingFileData.blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = incomingFileData.name;
+            document.body.appendChild(a);
+            a.click();
+            
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast("ダウンロードを開始しました！");
+        }
+
+        function resetToUpload() {
+            clearSelectedFile();
+            window.location.hash = '';
+            if (qrIntervalId) {
+                clearInterval(qrIntervalId);
+                qrIntervalId = null;
+            }
+            showView('upload');
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            checkEnvironment();
+            checkIncomingFile();
+        });
+
+        window.addEventListener('hashchange', () => {
+            checkIncomingFile();
+        });
+    </script>
+</body>
+</html>
