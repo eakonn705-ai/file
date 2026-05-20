@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts: Inter & Noto Sans JP -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- QRious 高精度QRコードローカル生成ライブラリ (完全にブラウザ側で完結) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <style>
         body {
             font-family: 'Inter', 'Noto Sans JP', sans-serif;
@@ -30,7 +32,6 @@
     </style>
 </head>
 <body class="min-h-screen text-slate-100 flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
-
 
     <!-- ヘッダー -->
     <header class="border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
@@ -146,7 +147,7 @@
                     <button onclick="toggleSettings()" class="w-full flex justify-between items-center text-xs text-slate-400 hover:text-slate-200 transition-colors focus:outline-none">
                         <span class="flex items-center font-semibold">
                             <svg class="w-4 h-4 mr-1.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                             </svg>
                             デプロイ共有設定（Q&A解決用）
@@ -228,6 +229,44 @@
                     </div>
                 </div>
 
+                <!-- QRコードエリア (完全ローカルレンダリング & ダウンロード & 手動フォールバック対応) -->
+                <div id="qr-container" class="hidden flex-col items-center justify-center p-5 bg-slate-900/60 rounded-2xl border border-slate-800 space-y-4">
+                    <div class="text-center">
+                        <span class="text-xs font-bold text-indigo-400 tracking-widest uppercase">QR Code Share</span>
+                        <p class="text-[10px] text-slate-400 mt-1">スマホのカメラで直接スキャンして瞬時に受け取れます</p>
+                    </div>
+                    
+                    <div class="relative bg-white p-4 rounded-2xl shadow-xl transition-all hover:scale-[1.02] duration-300">
+                        <!-- QRコード描画キャンバス -->
+                        <canvas id="qr-canvas" class="w-40 h-40"></canvas>
+                        <!-- 中央のミニPicoマーク（デザインアクセント） -->
+                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div class="w-8 h-8 bg-slate-950 border-2 border-white rounded-lg flex items-center justify-center shadow-lg">
+                                <span class="text-[9px] font-black text-indigo-400 tracking-tighter">Pico</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 超長大URL時のフォールバック短縮URLペーストフィールド -->
+                    <div id="qr-fallback-input-area" class="hidden w-full max-w-xs space-y-2">
+                        <p class="text-[10px] text-amber-400 text-center leading-relaxed">
+                            ⚠️ <strong>データが巨大なため、直接QRコード化できません。</strong><br>
+                            上のボタンで取得した「短縮URL」をここにペーストすると、スキャン可能なQRコードが自動生成されます！
+                        </p>
+                        <input type="text" id="shortened-url-input" oninput="generateQRFromInput(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 text-center focus:outline-none focus:border-indigo-500 placeholder-slate-600" placeholder="短縮URLを入力 (https://is.gd/...)">
+                    </div>
+
+                    <!-- QRコード操作ボタン -->
+                    <div class="flex gap-2">
+                        <button onclick="downloadQRCode()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200 rounded-xl text-xs font-bold flex items-center transition-all shadow-md">
+                            <svg class="w-3.5 h-3.5 mr-1.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                            QRコードをPNG保存
+                        </button>
+                    </div>
+                </div>
+
                 <!-- ファイル情報カード -->
                 <div class="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row justify-between gap-4 text-xs">
                     <div class="space-y-1">
@@ -244,14 +283,6 @@
                             <span id="result-url-size" class="font-semibold text-slate-300 text-sm">0 KB</span>
                         </div>
                     </div>
-                </div>
-
-                <!-- QRコードエリア (軽量ファイル用) -->
-                <div id="qr-container" class="hidden flex-col items-center justify-center p-4 bg-white/5 rounded-2xl border border-white/5 space-y-2">
-                    <div class="bg-white p-3 rounded-xl shadow-lg">
-                        <img id="qr-code-img" src="" alt="QR Code" class="w-32 h-32">
-                    </div>
-                    <span class="text-[10px] text-slate-400">スマホで直接スキャンして受け取れます</span>
                 </div>
 
                 <!-- もう一回ボタン -->
@@ -446,7 +477,6 @@
             }, 4000);
         }
 
-
         // URLセーフなBase64変換
         function arrayBufferToBase64(buffer) {
             let binary = '';
@@ -516,7 +546,6 @@
                 throw new Error("ブラウザの解凍処理に失敗しました。URLデータが壊れている可能性があります。");
             }
         }
-
 
         // ドラッグ＆ドロップ動作の設定
         const dropZone = document.getElementById('drop-zone');
@@ -639,7 +668,6 @@
             btn.className = "w-full py-4 px-6 bg-slate-700 text-slate-400 font-bold rounded-2xl shadow-lg transition-all duration-300 cursor-not-allowed flex items-center justify-center space-x-2";
         }
 
-
         // URL共有生成
         async function generateShareLink() {
             if (!selectedFile) return;
@@ -692,10 +720,38 @@
                         lengthAlert.classList.add('hidden');
                     }
 
-                    // 簡易的なQRコード表示 (URLが比較的短い場合のみ対応)
+                    // ==========================================
+                    // QRコードローカル生成エンジン (qrious使用)
+                    // ==========================================
                     const qrContainer = document.getElementById('qr-container');
-                    if (generatedUrl.length < 2300) {
-                        document.getElementById('qr-code-img').src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(generatedUrl)}`;
+                    const fallbackArea = document.getElementById('qr-fallback-input-area');
+                    
+                    if (typeof QRious !== 'undefined') {
+                        // スマホの読み取り上限(約3000文字以下)であれば直接ローカル生成
+                        if (generatedUrl.length < 3000) {
+                            fallbackArea.classList.add('hidden');
+                            
+                            // ローカルでの直接高精度描画
+                            new QRious({
+                                element: document.getElementById('qr-canvas'),
+                                value: generatedUrl,
+                                size: 250,
+                                level: 'L' // データ密度が高いので誤り訂正Lに落として読み取り易くする
+                            });
+                        } else {
+                            // 3000文字を超える巨大な場合は、短縮URL入力ペーストエリアを表示
+                            fallbackArea.classList.remove('hidden');
+                            document.getElementById('shortened-url-input').value = ''; // クリア
+                            
+                            // 初期状態は仮のダミー
+                            new QRious({
+                                element: document.getElementById('qr-canvas'),
+                                value: 'https://picoshare.github.io/please-shorten-url',
+                                size: 250,
+                                level: 'M'
+                            });
+                        }
+                        
                         qrContainer.classList.remove('hidden');
                         qrContainer.classList.add('flex');
                     } else {
@@ -712,6 +768,50 @@
             };
             
             reader.readAsArrayBuffer(selectedFile);
+        }
+
+        // ペーストされた短縮URLからその場でQRコードを再レンダリングする
+        function generateQRFromInput(value) {
+            const trimmedValue = value.trim();
+            if (trimmedValue && trimmedValue.startsWith('http')) {
+                if (typeof QRious !== 'undefined') {
+                    new QRious({
+                        element: document.getElementById('qr-canvas'),
+                        value: trimmedValue,
+                        size: 250,
+                        level: 'M' // 短縮URLは短いため、誤り訂正をMに引き上げてスキャン精度を高める
+                    });
+                    showToast("短縮URLからQRコードを再描画しました！");
+                }
+            }
+        }
+
+        // 生成されたQRコード(Canvas)をPNG画像としてダウンロードする
+        function downloadQRCode() {
+            const canvas = document.getElementById('qr-canvas');
+            if (!canvas) {
+                showToast("QRコードキャンバスが見つかりません。", "error");
+                return;
+            }
+            
+            try {
+                const url = canvas.toDataURL("image/png");
+                const a = document.createElement('a');
+                a.href = url;
+                
+                // ファイル名からプレフィックスを設定
+                const baseName = selectedFile ? selectedFile.name.split('.').slice(0, -1).join('.') : 'picoshare';
+                a.download = `${baseName}_qrcode.png`;
+                
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                showToast("QRコード(PNG)をダウンロードしました！");
+            } catch (err) {
+                console.error("QR download failed:", err);
+                showToast("画像の書き出し・保存に失敗しました。", "error");
+            }
         }
 
         // 短縮サービスの新しいタブを開く
@@ -773,7 +873,6 @@
             window.location.hash = '';
             showView('upload');
         }
-
 
         // 受け取りハッシュのパース
         let incomingFileData = null;
