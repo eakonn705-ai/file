@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PicoShare - サーバー不要の超高速URLファイル共有</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & Noto Sans JP -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background: radial-gradient(circle at top, #1e1b4b 0%, #0f172a 100%);
+        }
+        /* カスタムスクロールバー */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-100 flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
+
+
+    <!-- ヘッダー -->
+    <header class="border-b border-slate-800/80 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="resetToUpload()">
+                <div class="p-2 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-xl shadow-lg shadow-indigo-500/30">
+                    <!-- 送信アイコン SVG -->
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <span class="text-xl font-bold tracking-wider bg-gradient-to-r from-white via-indigo-100 to-indigo-300 bg-clip-text text-transparent">PicoShare</span>
+                    <span class="text-xs block text-indigo-400 font-medium tracking-widest leading-none">URL-EMBEDDED SHARE</span>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span class="w-2 h-2 mr-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+                    完全サーバーレス
+                </span>
+            </div>
+        </div>
+    </header>
+
+
+    <!-- メインコンテンツ -->
+    <main class="flex-grow max-w-4xl w-full mx-auto px-4 py-8 flex flex-col justify-center">
+        
+        <!-- トースト通知コンテナ -->
+        <div id="toast-container" class="fixed top-20 right-4 z-50 flex flex-col gap-2 max-w-sm w-full"></div>
+
+        <!-- 開発環境・一時ドメイン警告バナー -->
+        <div id="env-warning-banner" class="hidden mb-6 p-4 bg-amber-950/40 border border-amber-500/30 rounded-2xl text-amber-300 text-xs leading-relaxed space-y-2">
+            <div class="flex items-center space-x-2 font-bold text-sm text-amber-400">
+                <svg class="w-5 h-5 shrink-0 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+                <span>現在、一時的な制限サーバー（プレビュー）環境で実行されています</span>
+            </div>
+            <p>
+                この環境のまま生成したURLを他人に送信しても、ドメインがプライベートなものであるため、相手側で<strong>「このサイトにアクセスできません」</strong>とエラーになります。
+                このHTMLファイルを <strong>GitHub Pages, Vercel, Netlify</strong> などの公開ホスティングにアップロードして、公開URLからご利用いただくか、下の「詳細設定」でデプロイ予定の公開先URLを手動設定してください。
+            </p>
+        </div>
+
+        <!-- 全体カードラッパー -->
+        <div class="bg-slate-800/40 backdrop-blur-xl border border-slate-700/50 rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden transition-all duration-300">
+            
+            <!-- 背景光沢 -->
+            <div class="absolute -top-40 -right-40 w-80 h-80 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <!-- ================= アップロードモード ================= -->
+            <div id="upload-section" class="space-y-6">
+                <div class="text-center space-y-2">
+                    <h1 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+                        ファイルを「URL」に変えて共有する
+                    </h1>
+                    <p class="text-slate-400 text-sm md:text-base max-w-lg mx-auto">
+                        ファイルデータを強力に圧縮し、URLの中に丸ごと埋め込みます。<br>サーバー保存なし。会員登録なし。漏洩リスクゼロ。
+                    </p>
+                </div>
+
+
+                <!-- ドラッグ＆ドロップゾーン -->
+                <div id="drop-zone" class="border-2 border-dashed border-slate-600 hover:border-indigo-500 bg-slate-900/40 hover:bg-slate-900/60 rounded-2xl p-8 text-center cursor-pointer transition-all duration-300 group relative">
+                    <input type="file" id="file-input" class="hidden">
+                    
+                    <div class="space-y-4 py-4" id="drop-zone-prompt">
+                        <div class="mx-auto w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center border border-slate-700 group-hover:scale-110 group-hover:bg-indigo-950/40 group-hover:border-indigo-500/50 transition-all duration-300">
+                            <!-- アップロードアイコン -->
+                            <svg class="w-8 h-8 text-slate-400 group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                            </svg>
+                        </div>
+                        <div class="space-y-1">
+                            <p class="text-lg font-semibold text-slate-200">
+                                クリックしてファイルを選択、またはドラッグ＆ドロップ
+                            </p>
+                            <p class="text-xs text-slate-400">
+                                推奨サイズ: <span class="text-indigo-400 font-semibold">1MB以下</span>（テキスト・コード・リサイズ済画像など）
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ファイル選択済み時のプレビュー表示 -->
+                    <div id="file-preview-zone" class="hidden space-y-4">
+                        <div class="flex items-center justify-center">
+                            <!-- サムネイル表示用 (画像の場合) -->
+                            <img id="preview-thumbnail" class="max-h-36 rounded-lg object-contain border border-slate-700 shadow-md hidden" src="" alt="Preview">
+                            <!-- 画像以外の場合の代替アイコン -->
+                            <div id="preview-file-icon" class="w-20 h-20 bg-indigo-950/50 border border-indigo-500/30 rounded-2xl flex items-center justify-center text-indigo-400">
+                                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                                </svg>
+                            </div>
+                        </div>
+
+                        <div class="space-y-1 max-w-md mx-auto">
+                            <h3 id="preview-filename" class="text-lg font-bold text-slate-100 truncate">file_name.txt</h3>
+                            <p id="preview-filesize" class="text-sm text-slate-400">ファイルサイズ: 0 KB</p>
+                        </div>
+
+                        <button type="button" onclick="clearSelectedFile(event)" class="text-xs text-rose-400 hover:text-rose-300 font-semibold underline underline-offset-4 focus:outline-none">
+                            別のファイルに変更する
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 詳細設定（カスタムホスト・ドメイン設定アコーディオン） -->
+                <div class="bg-slate-900/30 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <button onclick="toggleSettings()" class="w-full flex justify-between items-center text-xs text-slate-400 hover:text-slate-200 transition-colors focus:outline-none">
+                        <span class="flex items-center font-semibold">
+                            <svg class="w-4 h-4 mr-1.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                            デプロイ共有設定（Q&A解決用）
+                        </span>
+                        <svg id="settings-arrow" class="w-4 h-4 transform transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div id="settings-content" class="hidden pt-2 space-y-3">
+                        <div class="space-y-1">
+                            <label for="custom-host-input" class="text-[11px] font-bold text-indigo-300 block">カスタム共有ドメイン(公開URL)</label>
+                            <input type="url" id="custom-host-input" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 placeholder-slate-600" placeholder="https://yourname.github.io/picoshare/">
+                            <p class="text-[10px] text-slate-500 leading-relaxed">
+                                ※プレビュー開発画面からでも、ここに本番デプロイ先のURLを指定しておけば、それに基づいた「世界中でアクセス可能」な共有URLを正しく生成できます。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 安全サイズゲージ -->
+                <div id="gauge-container" class="hidden bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-400 flex items-center">
+                            <svg class="w-4 h-4 mr-1 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            URLデータサイズ推定
+                        </span>
+                        <span id="gauge-ratio" class="font-mono text-slate-300">0% (0 KB / 1.5 MB)</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div id="gauge-bar" class="bg-gradient-to-r from-emerald-500 via-yellow-500 to-rose-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
+                    <p id="gauge-warning" class="text-xs text-slate-400 leading-relaxed"></p>
+                </div>
+
+                <!-- アップロード実行ボタン -->
+                <button id="btn-generate" disabled onclick="generateShareLink()" class="w-full py-4 px-6 bg-slate-700 text-slate-400 font-bold rounded-2xl shadow-lg transition-all duration-300 cursor-not-allowed flex items-center justify-center space-x-2">
+                    <span>共有URLを生成する</span>
+                </button>
+            </div>
+
+
+            <!-- ================= 生成完了モード ================= -->
+            <div id="result-section" class="hidden space-y-6">
+                <div class="text-center space-y-2">
+                    <div class="mx-auto w-16 h-16 bg-emerald-950/50 border border-emerald-500/30 rounded-full flex items-center justify-center text-emerald-400 animate-bounce">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    </div>
+                    <h1 class="text-2xl font-extrabold text-white">共有URLが完成しました！</h1>
+                    <p class="text-slate-400 text-sm">
+                        以下のURLをコピーして相手に送るだけで、ファイルを共有できます。
+                    </p>
+                </div>
+
+                <!-- 生成されたURLの表示とコピー -->
+                <div class="space-y-3">
+                    <div class="flex items-center space-x-2 bg-slate-900/80 rounded-2xl p-3 border border-slate-800">
+                        <input type="text" id="output-url" readonly class="bg-transparent border-none text-slate-300 w-full text-xs md:text-sm font-mono focus:outline-none focus:ring-0 select-all overflow-x-auto" value="">
+                        <button onclick="copyGeneratedLink()" class="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold text-xs rounded-xl shadow-md transition-all whitespace-nowrap">
+                            コピー
+                        </button>
+                    </div>
+                    
+                    <!-- URLが長すぎる時用の短縮案内・補助ボタン -->
+                    <div id="url-length-alert" class="p-3.5 bg-indigo-950/40 border border-indigo-500/20 rounded-xl space-y-2 text-xs">
+                        <p class="text-slate-300 leading-relaxed text-center">
+                            ⚠️ <strong>URLが非常に長くなっています！</strong><br>
+                            このままチャット（LINEやSlack）に貼ると途中で途切れてエラーになる確率が高いです。以下の無料サービスで短縮して送信してください。
+                        </p>
+                        <div class="flex flex-wrap justify-center gap-2 pt-1">
+                            <button onclick="openShortener('isgd')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-indigo-300 rounded-lg font-medium transition-colors">
+                                is.gd で短縮する（推奨）
+                            </button>
+                            <button onclick="openShortener('tinyurl')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-indigo-300 rounded-lg font-medium transition-colors">
+                                TinyURL で短縮する
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ファイル情報カード -->
+                <div class="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row justify-between gap-4 text-xs">
+                    <div class="space-y-1">
+                        <span class="text-slate-500 block">共有ファイル</span>
+                        <span id="result-filename" class="font-bold text-slate-200 text-sm truncate block max-w-xs">document.txt</span>
+                    </div>
+                    <div class="flex gap-6">
+                        <div class="space-y-1">
+                            <span class="text-slate-500 block">元のサイズ</span>
+                            <span id="result-orig-size" class="font-semibold text-slate-300 text-sm">0 KB</span>
+                        </div>
+                        <div class="space-y-1">
+                            <span class="text-slate-500 block">URLサイズ</span>
+                            <span id="result-url-size" class="font-semibold text-slate-300 text-sm">0 KB</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- QRコードエリア (軽量ファイル用) -->
+                <div id="qr-container" class="hidden flex-col items-center justify-center p-4 bg-white/5 rounded-2xl border border-white/5 space-y-2">
+                    <div class="bg-white p-3 rounded-xl shadow-lg">
+                        <img id="qr-code-img" src="" alt="QR Code" class="w-32 h-32">
+                    </div>
+                    <span class="text-[10px] text-slate-400">スマホで直接スキャンして受け取れます</span>
+                </div>
+
+                <!-- もう一回ボタン -->
+                <button onclick="resetToUpload()" class="w-full py-3.5 px-6 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-2xl transition-all border border-slate-700 flex items-center justify-center space-x-2">
+                    <span>別のファイルを共有する</span>
+                </button>
+            </div>
+
+            <!-- ================= ダウンロード復元モード ================= -->
+            <div id="download-section" class="hidden space-y-6">
+                <div class="text-center space-y-2">
+                    <div class="mx-auto w-16 h-16 bg-indigo-950/50 border border-indigo-500/30 rounded-full flex items-center justify-center text-indigo-400">
+                        <svg class="w-8 h-8 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                    </div>
+                    <h1 class="text-2xl font-extrabold text-white">共有ファイルが届きました</h1>
+                    <p class="text-slate-400 text-sm">
+                        相手のブラウザから直接、安全に転送されたファイルです。
+                    </p>
+                </div>
+
+                <!-- ファイル詳細カード -->
+                <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+                    <div class="flex items-start justify-between border-b border-slate-800 pb-4">
+                        <div class="space-y-1">
+                            <span class="text-xs text-indigo-400 font-semibold tracking-wider">FILE NAME</span>
+                            <h2 id="download-filename" class="text-xl font-bold text-white break-all">my_document.pdf</h2>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 text-xs">
+                        <div class="space-y-1 bg-slate-950/30 p-3 rounded-xl border border-slate-900">
+                            <span class="text-slate-500 block">ファイル種類</span>
+                            <span id="download-filetype" class="font-semibold text-slate-200">PDF Document</span>
+                        </div>
+                        <div class="space-y-1 bg-slate-950/30 p-3 rounded-xl border border-slate-900">
+                            <span class="text-slate-500 block">ファイルサイズ</span>
+                            <span id="download-filesize" class="font-semibold text-slate-200">0 KB</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ダウンロードボタン -->
+                <button id="btn-download" onclick="triggerFileDownload()" class="w-full py-4 px-6 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold rounded-2xl shadow-lg shadow-emerald-950/50 hover:shadow-emerald-900/50 transition-all duration-300 flex items-center justify-center space-x-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                    <span>このファイルをダウンロードする</span>
+                </button>
+
+                <!-- 新しく自分も共有するボタン -->
+                <button onclick="resetToUpload()" class="w-full py-3.5 px-6 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-2xl transition-all border border-slate-700 flex items-center justify-center space-x-2">
+                    <span>自分もファイルを共有してみる</span>
+                </button>
+            </div>
+
+            <!-- ================= ローディング / 処理中モード ================= -->
+            <div id="loading-section" class="hidden py-12 flex-col items-center justify-center space-y-4">
+                <div class="relative w-16 h-16">
+                    <div class="absolute inset-0 border-4 border-indigo-950 rounded-full"></div>
+                    <div class="absolute inset-0 border-4 border-t-indigo-500 rounded-full animate-spin"></div>
+                </div>
+                <div class="text-center">
+                    <h3 id="loading-title" class="text-lg font-bold text-white">処理中...</h3>
+                    <p id="loading-desc" class="text-sm text-slate-400">ブラウザ上で圧縮処理を行っています。お待ちください。</p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- アプリ解説アコーディオン -->
+        <div class="mt-8 bg-slate-800/20 rounded-2xl border border-slate-800/80 p-5 space-y-4">
+            <h3 class="text-sm font-bold text-slate-300 flex items-center">
+                <svg class="w-4 h-4 mr-1.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                PicoShare の秘密・仕組みについて
+            </h3>
+            <div class="text-xs text-slate-400 space-y-3 leading-relaxed">
+                <p>
+                    <strong class="text-slate-200">Q. 本当にサーバーに保存していないのですか？</strong><br>
+                    はい、一切保存していません。このアプリは「アップロードしたデータ」をブラウザ内で超高圧縮（Gzip）したのち、URLのハッシュ（#以降）として文字列に変換しています。URLそのものがファイルの中身です。
+                </p>
+                <p>
+                    <strong class="text-slate-200">Q. なぜファイル容量に制限があるのですか？</strong><br>
+                    ブラウザや一部のSNS/チャットアプリは、URLの長さに上限（約20,000〜2,000,000文字）を設けています。そのため、圧縮後のURLデータが1.5MB（約2MB文字）を超えるファイルは、エラーまたは送信不可になる恐れがあります。
+                </p>
+                <p>
+                    <strong class="text-slate-200">Q. ファイルの期限はありますか？</strong><br>
+                    期限はありません。あなたが共有したURLが存在する限り、いつでも、何年後でもダウンロード・復元可能です。
+                </p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- フッター -->
+    <footer class="py-6 border-t border-slate-800 bg-slate-950/40 text-center text-xs text-slate-500">
+        <div class="max-w-4xl mx-auto px-4">
+            <p>© 2026 PicoShare. No Server, Pure Client-side Web App.</p>
+        </div>
+    </footer>
+
+
+    <script>
+        // 状態変数
+        let selectedFile = null;
+        let compressedData = null;
+        let generatedUrl = "";
+        let isSettingsOpen = false;
+
+        // ドメイン検証（プレビュー環境か、それとも正式な公開ドメインか）
+        function checkEnvironment() {
+            const host = window.location.hostname;
+            const banner = document.getElementById('env-warning-banner');
+            
+            // iframeサンドボックス内のドメイン、ローカル環境、または一時ドメインを判定
+            if (
+                host.includes('googleusercontent.com') || 
+                host.includes('translate.goog') || 
+                host.includes('sandbox') ||
+                host === ''
+            ) {
+                banner.classList.remove('hidden');
+                // 推奨カスタムURLの初期値を設定してみる
+                document.getElementById('custom-host-input').value = "https://your-github-username.github.io/picoshare/";
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        // 設定アコーディオンの開閉
+        function toggleSettings() {
+            isSettingsOpen = !isSettingsOpen;
+            const content = document.getElementById('settings-content');
+            const arrow = document.getElementById('settings-arrow');
+            if (isSettingsOpen) {
+                content.classList.remove('hidden');
+                arrow.classList.add('rotate-180');
+            } else {
+                content.classList.add('hidden');
+                arrow.classList.remove('rotate-180');
+            }
+        }
+
+        // UI切り替え関数
+        function showView(viewName) {
+            document.getElementById('upload-section').classList.add('hidden');
+            document.getElementById('result-section').classList.add('hidden');
+            document.getElementById('download-section').classList.add('hidden');
+            document.getElementById('loading-section').classList.add('hidden');
+
+            if (viewName === 'upload') {
+                document.getElementById('upload-section').classList.remove('hidden');
+            } else if (viewName === 'result') {
+                document.getElementById('result-section').classList.remove('hidden');
+            } else if (viewName === 'download') {
+                document.getElementById('download-section').classList.remove('hidden');
+            } else if (viewName === 'loading') {
+                document.getElementById('loading-section').classList.remove('hidden');
+            }
+        }
+
+        // トースト通知を表示
+        function showToast(message, type = "success") {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const bgClass = type === "success" ? "bg-emerald-950/90 border-emerald-500/50 text-emerald-300" : "bg-rose-950/90 border-rose-500/50 text-rose-300";
+            const icon = type === "success" 
+                ? `<svg class="w-5 h-5 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`
+                : `<svg class="w-5 h-5 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
+
+            toast.className = `flex items-center space-x-3 px-4 py-3 rounded-2xl border ${bgClass} shadow-xl backdrop-blur-md transition-all duration-300 transform translate-y-2 opacity-0`;
+            toast.innerHTML = `
+                ${icon}
+                <span class="text-xs font-semibold">${message}</span>
+            `;
+
+            container.appendChild(toast);
+            
+            // アニメーション表示
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            // 自動消去
+            setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+
+        // URLセーフなBase64変換
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        function base64ToArrayBuffer(base64) {
+            let b64 = base64.replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4) {
+                b64 += '=';
+            }
+            const binaryString = atob(b64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function stringToBase64(str) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(str);
+            return arrayBufferToBase64(data.buffer);
+        }
+
+        function base64ToString(b64) {
+            const buffer = base64ToArrayBuffer(b64);
+            const decoder = new TextDecoder();
+            return decoder.decode(buffer);
+        }
+
+        // バイト数フォーマッター
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+
+        // ブラウザAPIを使用した圧縮 (CompressionStream)
+        async function compressData(arrayBuffer) {
+            try {
+                const stream = new Response(arrayBuffer).body.pipeThrough(new CompressionStream('gzip'));
+                return await new Response(stream).arrayBuffer();
+            } catch (err) {
+                console.error("Compression failed:", err);
+                throw new Error("ブラウザの圧縮処理に失敗しました。");
+            }
+        }
+
+        // ブラウザAPIを使用した展開 (DecompressionStream)
+        async function decompressData(arrayBuffer) {
+            try {
+                const stream = new Response(arrayBuffer).body.pipeThrough(new DecompressionStream('gzip'));
+                return await new Response(stream).arrayBuffer();
+            } catch (err) {
+                console.error("Decompression failed:", err);
+                throw new Error("ブラウザの解凍処理に失敗しました。URLデータが壊れている可能性があります。");
+            }
+        }
+
+
+        // ドラッグ＆ドロップ動作の設定
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-indigo-500', 'bg-slate-900/80');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-indigo-500', 'bg-slate-900/80');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-indigo-500', 'bg-slate-900/80');
+            if (e.dataTransfer.files.length > 0) {
+                handleFileSelection(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelection(e.target.files[0]);
+            }
+        });
+
+        // ファイル選択時の処理
+        function handleFileSelection(file) {
+            selectedFile = file;
+            
+            // アップロードプロンプトの非表示化、プレビュー表示
+            document.getElementById('drop-zone-prompt').classList.add('hidden');
+            document.getElementById('file-preview-zone').classList.remove('hidden');
+
+            document.getElementById('preview-filename').innerText = file.name;
+            document.getElementById('preview-filesize').innerText = `ファイルサイズ: ${formatBytes(file.size)}`;
+
+            // 画像のサムネイルプレビュー
+            const thumbnailImg = document.getElementById('preview-thumbnail');
+            const fallbackIcon = document.getElementById('preview-file-icon');
+
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    thumbnailImg.src = e.target.result;
+                    thumbnailImg.classList.remove('hidden');
+                    fallbackIcon.classList.add('hidden');
+                };
+                reader.readAsDataURL(file);
+            } else {
+                thumbnailImg.classList.add('hidden');
+                fallbackIcon.classList.remove('hidden');
+            }
+
+            // 安全限界ゲージの計算と表示
+            updateLimitGauge(file.size);
+
+            // 送信ボタンの活性化
+            const btn = document.getElementById('btn-generate');
+            btn.removeAttribute('disabled');
+            btn.className = "w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-950/50 hover:shadow-indigo-900/50 transition-all duration-300 flex items-center justify-center space-x-2 cursor-pointer";
+        }
+
+        // ゲージの更新
+        function updateLimitGauge(fileSize) {
+            const container = document.getElementById('gauge-container');
+            const bar = document.getElementById('gauge-bar');
+            const ratioText = document.getElementById('gauge-ratio');
+            const warningText = document.getElementById('gauge-warning');
+
+            container.classList.remove('hidden');
+
+            // Gzipによる圧縮率の概算（テキストなら約70%削減、バイナリならほぼ等倍）
+            let estimatedCompressed = fileSize;
+            if (selectedFile.type.startsWith('text/') || selectedFile.name.endsWith('.json') || selectedFile.name.endsWith('.txt')) {
+                estimatedCompressed = fileSize * 0.3; // テキスト系は7割削減想定
+            } else {
+                estimatedCompressed = fileSize * 1.05; // 圧縮済みファイルは増える可能性を考慮
+            }
+
+            // URL最大目安: 1.5MB = 1572864 Bytes (安全ライン)
+            const maxSafeBytes = 1572864;
+            const pct = Math.min(100, Math.round((estimatedCompressed / maxSafeBytes) * 100));
+
+            ratioText.innerText = `${pct}% (予測圧縮サイズ: ${formatBytes(estimatedCompressed)} / 安全上限: ${formatBytes(maxSafeBytes)})`;
+            bar.style.width = `${pct}%`;
+
+            // 危険度に応じたカラーチェンジ
+            if (pct < 60) {
+                bar.className = "bg-gradient-to-r from-emerald-500 to-teal-500 h-full w-0 transition-all duration-300";
+                warningText.innerHTML = "✅ <span class='text-emerald-400 font-semibold'>安全なサイズです。</span> すべてのブラウザ、チャットツールで快適に送信できます。";
+            } else if (pct < 100) {
+                bar.className = "bg-gradient-to-r from-yellow-500 to-orange-500 h-full w-0 transition-all duration-300";
+                warningText.innerHTML = "⚠️ <span class='text-yellow-400 font-semibold'>容量が大きめです。</span> 一部のチャットアプリ等でURLが長すぎて送信できない場合は、URL短縮サービスを使って送信してください。";
+            } else {
+                bar.className = "bg-gradient-to-r from-rose-500 to-red-600 h-full w-0 transition-all duration-300";
+                warningText.innerHTML = "❌ <span class='text-rose-400 font-semibold'>安全上限を超えています。</span> ブラウザやツールによってURLが壊れる可能性が非常に高いです。ファイルを軽量化することを推奨します。";
+            }
+        }
+
+        // ファイル選択解除
+        function clearSelectedFile(event) {
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            selectedFile = null;
+            fileInput.value = '';
+
+            document.getElementById('drop-zone-prompt').classList.remove('hidden');
+            document.getElementById('file-preview-zone').classList.add('hidden');
+            document.getElementById('gauge-container').classList.add('hidden');
+
+            const btn = document.getElementById('btn-generate');
+            btn.setAttribute('disabled', 'true');
+            btn.className = "w-full py-4 px-6 bg-slate-700 text-slate-400 font-bold rounded-2xl shadow-lg transition-all duration-300 cursor-not-allowed flex items-center justify-center space-x-2";
+        }
+
+
+        // URL共有生成
+        async function generateShareLink() {
+            if (!selectedFile) return;
+
+            document.getElementById('loading-title').innerText = "ファイルをエンコード中...";
+            document.getElementById('loading-desc').innerText = "ブラウザ上でGzip高圧縮とハッシュの生成を行っています。";
+            showView('loading');
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const arrayBuffer = e.target.result;
+                    // 1. Gzip圧縮
+                    const compressedBuffer = await compressData(arrayBuffer);
+                    
+                    // 2. Base64変換
+                    const fileBase64 = arrayBufferToBase64(compressedBuffer);
+                    const nameBase64 = stringToBase64(selectedFile.name);
+                    const typeBase64 = stringToBase64(selectedFile.type || 'application/octet-stream');
+
+                    // 3. ハッシュ連結 (#name:type:data)
+                    const hashValue = `#${nameBase64}:${typeBase64}:${fileBase64}`;
+                    
+                    // ドメインの決定 (手動カスタム設定があれば優先、なければ現在のドメイン)
+                    const customHost = document.getElementById('custom-host-input').value.trim();
+                    let baseUrl = window.location.origin + window.location.pathname;
+                    
+                    if (customHost && customHost.startsWith('http')) {
+                        // カスタムホスト指定がある場合は適用
+                        baseUrl = customHost.endsWith('/') ? customHost : customHost + '/';
+                        // 元のパスが index.html で終わる、などの整合性を簡易補正
+                        if (baseUrl.endsWith('.html/')) {
+                            baseUrl = baseUrl.slice(0, -1);
+                        }
+                    }
+                    
+                    generatedUrl = baseUrl + hashValue;
+
+                    // 結果画面の設定
+                    document.getElementById('output-url').value = generatedUrl;
+                    document.getElementById('result-filename').innerText = selectedFile.name;
+                    document.getElementById('result-orig-size').innerText = formatBytes(selectedFile.size);
+                    document.getElementById('result-url-size').innerText = formatBytes(generatedUrl.length);
+
+                    // URLサイズによるアラート切り替え (2000文字以上でチャットアプリ警告を表示)
+                    const lengthAlert = document.getElementById('url-length-alert');
+                    if (generatedUrl.length > 2000) {
+                        lengthAlert.classList.remove('hidden');
+                    } else {
+                        lengthAlert.classList.add('hidden');
+                    }
+
+                    // 簡易的なQRコード表示 (URLが比較的短い場合のみ対応)
+                    const qrContainer = document.getElementById('qr-container');
+                    if (generatedUrl.length < 2300) {
+                        document.getElementById('qr-code-img').src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(generatedUrl)}`;
+                        qrContainer.classList.remove('hidden');
+                        qrContainer.classList.add('flex');
+                    } else {
+                        qrContainer.classList.add('hidden');
+                        qrContainer.classList.remove('flex');
+                    }
+
+                    showView('result');
+                    showToast("共有URLが正常に作成されました！");
+                } catch (err) {
+                    showView('upload');
+                    showToast(err.message, "error");
+                }
+            };
+            
+            reader.readAsArrayBuffer(selectedFile);
+        }
+
+        // 短縮サービスの新しいタブを開く
+        function openShortener(service) {
+            if (!generatedUrl) return;
+            let targetUrl = "";
+            if (service === 'isgd') {
+                targetUrl = `https://is.gd/create.php?format=simple&url=${encodeURIComponent(generatedUrl)}`;
+            } else {
+                targetUrl = `https://tinyurl.com/api-create.php?url=${encodeURIComponent(generatedUrl)}`;
+            }
+            
+            // 新しいタブでAPI経由の短縮窓を表示
+            window.open(targetUrl, '_blank');
+            showToast("短縮サービスのページを開きました。");
+        }
+
+        // 生成されたURLをコピー
+        function copyGeneratedLink() {
+            const urlInput = document.getElementById('output-url');
+            
+            // クリップボードAPIを試行
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(generatedUrl).then(() => {
+                    showToast("URLをクリップボードにコピーしました！");
+                }).catch(() => {
+                    fallbackCopy(generatedUrl);
+                });
+            } else {
+                fallbackCopy(generatedUrl);
+            }
+        }
+
+        // コピー処理のフォールバック
+        function fallbackCopy(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";  // スクロール対策
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showToast("URLをコピーしました！");
+                } else {
+                    showToast("コピーできませんでした。直接選択してコピーしてください。", "error");
+                }
+            } catch (err) {
+                showToast("コピーエラーが発生しました。", "error");
+            }
+            document.body.removeChild(textArea);
+        }
+
+        // アップロード状態へのリセット
+        function resetToUpload() {
+            clearSelectedFile();
+            // ハッシュクリア
+            window.location.hash = '';
+            showView('upload');
+        }
+
+
+        // 受け取りハッシュのパース
+        let incomingFileData = null;
+
+        async function checkIncomingFile() {
+            const hash = window.location.hash;
+            if (!hash || hash.length < 10) {
+                // ハッシュがない、または不完全な場合はアップロード画面
+                showView('upload');
+                return;
+            }
+
+            // '#'を除去して分割
+            const cleanHash = hash.substring(1);
+            const parts = cleanHash.split(':');
+
+            if (parts.length < 3) {
+                // 旧形式または無効なデータの場合
+                showView('upload');
+                return;
+            }
+
+            document.getElementById('loading-title').innerText = "ファイルをデコード中...";
+            document.getElementById('loading-desc').innerText = "URLからデータを読み取り、元のファイルを再構成しています。";
+            showView('loading');
+
+            try {
+                const nameBase64 = parts[0];
+                const typeBase64 = parts[1];
+                const fileBase64 = parts[2];
+
+                // 1. 各要素をデコード
+                const filename = base64ToString(nameBase64);
+                const filetype = base64ToString(typeBase64);
+                
+                // 2. 圧縮データへの展開
+                const compressedBuffer = base64ToArrayBuffer(fileBase64);
+                const decompressedBuffer = await decompressData(compressedBuffer);
+
+                // 3. Blobの作成
+                const fileBlob = new Blob([decompressedBuffer], { type: filetype });
+
+                incomingFileData = {
+                    blob: fileBlob,
+                    name: filename,
+                    size: fileBlob.size,
+                    type: filetype
+                };
+
+                // ダウンロード画面の設定
+                document.getElementById('download-filename').innerText = filename;
+                document.getElementById('download-filetype').innerText = filetype || '不明なファイル形式';
+                document.getElementById('download-filesize').innerText = formatBytes(fileBlob.size);
+
+                showView('download');
+                showToast("ファイルの復元に成功しました！");
+            } catch (err) {
+                console.error(err);
+                showView('upload');
+                showToast("ファイルの復元に失敗しました。URLが途中で切れている可能性があります。", "error");
+            }
+        }
+
+        // ダウンロード実行
+        function triggerFileDownload() {
+            if (!incomingFileData) return;
+
+            const url = URL.createObjectURL(incomingFileData.blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = incomingFileData.name;
+            document.body.appendChild(a);
+            a.click();
+            
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showToast("ダウンロードを開始しました！");
+        }
+
+        // 初期化処理
+        window.addEventListener('DOMContentLoaded', () => {
+            checkEnvironment();
+            checkIncomingFile();
+        });
+
+        // ハッシュ変更時にも動的にチェック
+        window.addEventListener('hashchange', () => {
+            checkIncomingFile();
+        });
+
+    </script>
+</body>
+</html>
