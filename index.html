@@ -147,7 +147,7 @@
                     <button onclick="toggleSettings()" class="w-full flex justify-between items-center text-xs text-slate-400 hover:text-slate-200 transition-colors focus:outline-none">
                         <span class="flex items-center font-semibold">
                             <svg class="w-4 h-4 mr-1.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                             </svg>
                             デプロイ共有設定（Q&A解決用）
@@ -211,6 +211,22 @@
                             コピー
                         </button>
                     </div>
+
+                    <!-- 自動生成された短縮URLの表示用コンテナ（裏側のAPIが成功したら表示） -->
+                    <div id="shortened-url-container" class="hidden space-y-2 p-3.5 bg-emerald-950/30 border border-emerald-500/20 rounded-2xl">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-bold text-emerald-400 flex items-center">
+                                <span class="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping mr-1.5"></span>
+                                スマホ最適化済URL (自動生成)
+                            </span>
+                        </div>
+                        <div class="flex items-center space-x-2 bg-slate-950/50 rounded-xl p-2 border border-slate-900">
+                            <input type="text" id="output-shortened-url" readonly class="bg-transparent border-none text-emerald-300 w-full text-xs font-mono focus:outline-none focus:ring-0 select-all" value="">
+                            <button onclick="copyShortenedLink()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-lg transition-all whitespace-nowrap">
+                                コピー
+                            </button>
+                        </div>
+                    </div>
                     
                     <!-- URLが長すぎる時用の短縮案内・補助ボタン -->
                     <div id="url-length-alert" class="p-3.5 bg-indigo-950/40 border border-indigo-500/20 rounded-xl space-y-2 text-xs">
@@ -233,7 +249,7 @@
                 <div id="qr-container" class="hidden flex-col items-center justify-center p-5 bg-slate-900/60 rounded-2xl border border-slate-800 space-y-4">
                     <div class="text-center">
                         <span class="text-xs font-bold text-indigo-400 tracking-widest uppercase">QR Code Share</span>
-                        <p class="text-[10px] text-slate-400 mt-1">スマホのカメラで直接スキャンして瞬時に受け取れます</p>
+                        <p id="qr-status-msg" class="text-[10px] text-slate-400 mt-1">スマホのカメラで直接スキャンして読み取り可能です</p>
                     </div>
                     
                     <div class="relative bg-white p-4 rounded-2xl shadow-xl transition-all hover:scale-[1.02] duration-300">
@@ -245,13 +261,18 @@
                                 <span class="text-[9px] font-black text-indigo-400 tracking-tighter">Pico</span>
                             </div>
                         </div>
+                        <!-- ローディングアニメーション（短縮API待ち用） -->
+                        <div id="qr-loading-overlay" class="hidden absolute inset-0 bg-slate-950/80 rounded-2xl flex flex-col items-center justify-center space-y-2">
+                            <div class="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                            <span class="text-[10px] text-slate-400">QRコードを最適化中...</span>
+                        </div>
                     </div>
 
                     <!-- 超長大URL時のフォールバック短縮URLペーストフィールド -->
                     <div id="qr-fallback-input-area" class="hidden w-full max-w-xs space-y-2">
                         <p class="text-[10px] text-amber-400 text-center leading-relaxed">
-                            ⚠️ <strong>データが巨大なため、直接QRコード化できません。</strong><br>
-                            上のボタンで取得した「短縮URL」をここにペーストすると、スキャン可能なQRコードが自動生成されます！
+                            ⚠️ <strong>データサイズ制限によりQRのドットが細かすぎます。</strong><br>
+                            上の「is.gd」等で取得した短縮URLをここにペーストすると、スキャン可能なQRコードが自動生成されます！
                         </p>
                         <input type="text" id="shortened-url-input" oninput="generateQRFromInput(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 text-center focus:outline-none focus:border-indigo-500 placeholder-slate-600" placeholder="短縮URLを入力 (https://is.gd/...)">
                     </div>
@@ -393,6 +414,7 @@
         let selectedFile = null;
         let compressedData = null;
         let generatedUrl = "";
+        let shortenedUrl = "";
         let isSettingsOpen = false;
 
         // ドメイン検証（プレビュー環境か、それとも正式な公開ドメインか）
@@ -668,6 +690,7 @@
             btn.className = "w-full py-4 px-6 bg-slate-700 text-slate-400 font-bold rounded-2xl shadow-lg transition-all duration-300 cursor-not-allowed flex items-center justify-center space-x-2";
         }
 
+
         // URL共有生成
         async function generateShareLink() {
             if (!selectedFile) return;
@@ -698,13 +721,13 @@
                     if (customHost && customHost.startsWith('http')) {
                         // カスタムホスト指定がある場合は適用
                         baseUrl = customHost.endsWith('/') ? customHost : customHost + '/';
-                        // 元のパスが index.html で終わる、などの整合性を簡易補正
                         if (baseUrl.endsWith('.html/')) {
                             baseUrl = baseUrl.slice(0, -1);
                         }
                     }
                     
                     generatedUrl = baseUrl + hashValue;
+                    shortenedUrl = ""; // リセット
 
                     // 結果画面の設定
                     document.getElementById('output-url').value = generatedUrl;
@@ -720,43 +743,48 @@
                         lengthAlert.classList.add('hidden');
                     }
 
+                    // 短縮エリアの初期非表示化
+                    document.getElementById('shortened-url-container').classList.add('hidden');
+
                     // ==========================================
-                    // QRコードローカル生成エンジン (qrious使用)
+                    // QRコードのローカル生成と自動短縮最適化
                     // ==========================================
                     const qrContainer = document.getElementById('qr-container');
                     const fallbackArea = document.getElementById('qr-fallback-input-area');
-                    
-                    if (typeof QRious !== 'undefined') {
-                        // スマホの読み取り上限(約3000文字以下)であれば直接ローカル生成
-                        if (generatedUrl.length < 3000) {
-                            fallbackArea.classList.add('hidden');
-                            
-                            // ローカルでの直接高精度描画
-                            new QRious({
-                                element: document.getElementById('qr-canvas'),
-                                value: generatedUrl,
-                                size: 250,
-                                level: 'L' // データ密度が高いので誤り訂正Lに落として読み取り易くする
-                            });
-                        } else {
-                            // 3000文字を超える巨大な場合は、短縮URL入力ペーストエリアを表示
-                            fallbackArea.classList.remove('hidden');
-                            document.getElementById('shortened-url-input').value = ''; // クリア
-                            
-                            // 初期状態は仮のダミー
-                            new QRious({
-                                element: document.getElementById('qr-canvas'),
-                                value: 'https://picoshare.github.io/please-shorten-url',
-                                size: 250,
-                                level: 'M'
-                            });
-                        }
+                    const qrLoading = document.getElementById('qr-loading-overlay');
+                    const qrStatus = document.getElementById('qr-status-msg');
+
+                    qrContainer.classList.remove('hidden');
+                    qrContainer.classList.add('flex');
+
+                    // 読み取り可能な安全サイズ(250文字以下)なら、そのまま直接QRコードをレンダリングする
+                    if (generatedUrl.length < 250) {
+                        fallbackArea.classList.add('hidden');
+                        qrLoading.classList.add('hidden');
+                        qrStatus.innerText = "スマホのカメラで直接スキャンして即受け取れます！";
                         
-                        qrContainer.classList.remove('hidden');
-                        qrContainer.classList.add('flex');
+                        new QRious({
+                            element: document.getElementById('qr-canvas'),
+                            value: generatedUrl,
+                            size: 250,
+                            level: 'M'
+                        });
                     } else {
-                        qrContainer.classList.add('hidden');
-                        qrContainer.classList.remove('flex');
+                        // 250文字を超える場合は、自動的に短縮APIを呼び出す（CORSを回避するためJSONPを利用）
+                        fallbackArea.classList.add('hidden');
+                        qrLoading.classList.remove('hidden'); // 最適化中表示
+                        qrStatus.innerText = "長いURLをスキャン可能なサイズに自動短縮中...";
+
+                        // QRコードをプレロード用ダミーで初期化
+                        new QRious({
+                            element: document.getElementById('qr-canvas'),
+                            value: "https://picoshare.github.io/loading",
+                            size: 250,
+                            level: 'M'
+                        });
+
+                        // JSONP経由で is.gd API を非同期に呼び出し、超高速短縮する
+                        requestAutoShorten(generatedUrl);
                     }
 
                     showView('result');
@@ -770,6 +798,91 @@
             reader.readAsArrayBuffer(selectedFile);
         }
 
+        // ==========================================
+        // CORSを100%回避するJSONPによる自動URL短縮エンジン
+        // ==========================================
+        function requestAutoShorten(longUrl) {
+            // グローバルスコープにコールバックを定義
+            const callbackName = "picoShortenCallback_" + Math.floor(Math.random() * 100000);
+            
+            window[callbackName] = function(data) {
+                const qrLoading = document.getElementById('qr-loading-overlay');
+                const qrStatus = document.getElementById('qr-status-msg');
+                const fallbackArea = document.getElementById('qr-fallback-input-area');
+
+                qrLoading.classList.add('hidden');
+
+                if (data && data.shorturl) {
+                    shortenedUrl = data.shorturl;
+
+                    // 短縮URL入力フィールドを更新し出現させる
+                    document.getElementById('shortened-url-container').classList.remove('hidden');
+                    document.getElementById('output-shortened-url').value = shortenedUrl;
+
+                    // ドットが大きく超読み取りやすい高感度QRコードを描画！
+                    new QRious({
+                        element: document.getElementById('qr-canvas'),
+                        value: shortenedUrl,
+                        size: 250,
+                        level: 'M' // 誤り訂正をMに引き上げてスキャン強度を高める
+                    });
+
+                    qrStatus.innerHTML = "✨ <span class='text-emerald-400 font-semibold'>QRコード最適化に成功！</span> スマホで爆速読み取りできます。";
+                    showToast("スマホ読み取り用にURLを自動短縮し、QRを最適化しました！");
+                } else {
+                    // エラーなどの場合は手動入力フォールバックへ
+                    handleShortenFallback();
+                }
+
+                // スクリプトタグをクリーンアップ
+                cleanupScript(callbackName);
+            };
+
+            // タイムアウト監視（3秒待ってもレスポンスがなければ手動に移行）
+            setTimeout(() => {
+                if (!shortenedUrl && document.getElementById('qr-loading-overlay').classList.contains('hidden') === false) {
+                    handleShortenFallback();
+                    cleanupScript(callbackName);
+                }
+            }, 3000);
+
+            // 動的にスクリプトタグを注入
+            const script = document.createElement('script');
+            script.id = callbackName;
+            script.src = `https://is.gd/create.php?format=json&callback=${callbackName}&url=${encodeURIComponent(longUrl)}`;
+            script.onerror = function() {
+                handleShortenFallback();
+                cleanupScript(callbackName);
+            };
+            document.body.appendChild(script);
+        }
+
+        // API失敗時の手動ペースト用の案内へのフォールバック
+        function handleShortenFallback() {
+            document.getElementById('qr-loading-overlay').classList.add('hidden');
+            document.getElementById('qr-fallback-input-area').classList.remove('hidden');
+            document.getElementById('qr-status-msg').innerHTML = "⚠️ <span class='text-amber-400'>URLが非常に長く、読み取れない可能性があります</span>";
+            document.getElementById('shortened-url-input').value = ''; // クリア
+            
+            // 仕方がないので長大なまま描画（スキャンは極めて難しいためメッセージ表示）
+            new QRious({
+                element: document.getElementById('qr-canvas'),
+                value: generatedUrl,
+                size: 250,
+                level: 'L'
+            });
+            showToast("自動短縮がタイムアウトしました。手動で短縮してください。", "error");
+        }
+
+        function cleanupScript(id) {
+            const script = document.getElementById(id);
+            if (script) {
+                script.remove();
+            }
+            delete window[id];
+        }
+
+
         // ペーストされた短縮URLからその場でQRコードを再レンダリングする
         function generateQRFromInput(value) {
             const trimmedValue = value.trim();
@@ -781,6 +894,7 @@
                         size: 250,
                         level: 'M' // 短縮URLは短いため、誤り訂正をMに引き上げてスキャン精度を高める
                     });
+                    document.getElementById('qr-status-msg').innerHTML = "✨ <span class='text-emerald-400 font-semibold'>手動最適化QRの生成完了！</span> スキャンできます。";
                     showToast("短縮URLからQRコードを再描画しました！");
                 }
             }
@@ -824,29 +938,37 @@
                 targetUrl = `https://tinyurl.com/api-create.php?url=${encodeURIComponent(generatedUrl)}`;
             }
             
-            // 新しいタブでAPI経由の短縮窓を表示
             window.open(targetUrl, '_blank');
             showToast("短縮サービスのページを開きました。");
         }
 
         // 生成されたURLをコピー
         function copyGeneratedLink() {
-            const urlInput = document.getElementById('output-url');
-            
-            // クリップボードAPIを試行
+            copyTextToClipboard(generatedUrl, "共有URLをコピーしました！");
+        }
+
+        // 短縮URLをコピー
+        function copyShortenedLink() {
+            if (shortenedUrl) {
+                copyTextToClipboard(shortenedUrl, "短縮URLをコピーしました！これで相手にスッキリ届きます！");
+            }
+        }
+
+        // コピー共通処理
+        function copyTextToClipboard(text, successMessage) {
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(generatedUrl).then(() => {
-                    showToast("URLをクリップボードにコピーしました！");
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast(successMessage);
                 }).catch(() => {
-                    fallbackCopy(generatedUrl);
+                    fallbackCopy(text, successMessage);
                 });
             } else {
-                fallbackCopy(generatedUrl);
+                fallbackCopy(text, successMessage);
             }
         }
 
         // コピー処理のフォールバック
-        function fallbackCopy(text) {
+        function fallbackCopy(text, successMessage) {
             const textArea = document.createElement("textarea");
             textArea.value = text;
             textArea.style.position = "fixed";  // スクロール対策
@@ -856,7 +978,7 @@
             try {
                 const successful = document.execCommand('copy');
                 if (successful) {
-                    showToast("URLをコピーしました！");
+                    showToast(successMessage);
                 } else {
                     showToast("コピーできませんでした。直接選択してコピーしてください。", "error");
                 }
